@@ -9,14 +9,23 @@ Berjalan di laptop sendiri (tanpa Google Colab), tampilan English, alur Step 1�
 2. Download ZIP repo ini lalu ekstrak.
 3. Jalankan:
    - **Windows:** klik dua kali `start-windows.bat`
-   - **Mac / Linux:** `./start-mac-linux.sh`
+   - **Mac:** klik dua kali `start-mac.command` (lihat catatan Mac di bawah)
+   - **Linux:** `./start-mac-linux.sh`
 4. Browser terbuka otomatis di http://localhost:8765. Jendela hitam (server) harus tetap terbuka selama dipakai.
 5. Step 1 → isi API key → **Save keys**. Key disimpan di file `.env` di laptop (tidak ikut ke GitHub).
 
 ### Mode analisis AI (opsional, paling akurat)
 
-Jalankan sekali `install-ai-windows.bat` (atau `./install-ai-mac-linux.sh`), lalu restart aplikasi.
+Jalankan sekali `install-ai-windows.bat` (Mac: `install-ai-mac.command`), lalu restart aplikasi.
 Model (±2 GB) diunduh otomatis saat pertama dipakai. Tanpa ini, analisis memakai **Lexicon** (instan).
+
+### Catatan Mac
+
+- Install Python dari https://www.python.org/downloads/macos/ (file .pkg), jangan pakai `python3` bawaan.
+- Pertama kali klik dua kali `start-mac.command`, macOS bisa menolak ("cannot be opened because it is from an unidentified developer").
+  Solusi: **klik kanan → Open → Open**. Cukup sekali.
+- Kalau muncul "permission denied", buka Terminal lalu jalankan:
+  `cd ~/Downloads/SocialScraper && chmod +x *.command *.sh && ./start-mac.command`
 
 ## Anti-timeout
 
