@@ -69,6 +69,34 @@ def wib_epoch(dstr, tstr, is_end):
     return int(dt.timestamp())
 
 
+_ILLEGAL_XLSX = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+
+
+def _clean_cell(v):
+    if isinstance(v, (dict, list, tuple, set)):
+        v = _json.dumps(v, ensure_ascii=False, default=str)
+    if isinstance(v, bytes):
+        v = v.decode("utf-8", "replace")
+    if isinstance(v, str):
+        v = _ILLEGAL_XLSX.sub(" ", v)
+        v = v.encode("utf-8", "replace").decode("utf-8")   # drop broken emoji halves (lone surrogates)
+        v = v[:32767]                                      # Excel's per-cell limit
+    return v
+
+
+def _excel_safe(df):
+    """Remove characters Excel cannot store (control chars in post text, broken emoji, >32k text).
+
+    Older pandas versions stop writing mid-sheet on these, leaving every column after the bad
+    cell empty.
+    """
+    df = df.copy()
+    for c in df.columns:
+        if df[c].dtype == object or str(df[c].dtype).startswith("str"):
+            df[c] = df[c].map(_clean_cell)
+    return df
+
+
 def run_job(params, progress, result):
     """Run one scrape. `result` is filled with files/rows/preview when done."""
     P = dict(DEFAULTS)
@@ -643,6 +671,7 @@ def run_job(params, progress, result):
     # Sentiment (NLP) + Emotion (Plutchik) + layout mengikuti Sample_Crawling
     print(f"\n\U0001F9E0 Sentiment & emotion analysis: {'AI model (hybrid with lexicon)' if NLP_MODE['mode'] == 'ai' else 'lexicon'} \u2014 runs locally, no API credits...")
     df = to_sample_layout(df)
+    df = _excel_safe(df)
     if until_str and P["time_filter"]:
         label = until_str + " " + (until_tstr or "23.59")
     else:
@@ -661,7 +690,10 @@ def run_job(params, progress, result):
     saved = []
     if "Excel" in P["fmt"]:
         xp = os.path.join(OUTPUT_DIR, base + ".xlsx")
-        df.to_excel(xp, index=False)
+        # Write to a temp file first: a failed write must never leave a half-filled workbook.
+        tmp = os.path.join(OUTPUT_DIR, ".partial_" + base + ".xlsx")
+        df.to_excel(tmp, index=False, engine="openpyxl")
+        os.replace(tmp, xp)
         try:
             from openpyxl import load_workbook
             from openpyxl.styles import Font, PatternFill
