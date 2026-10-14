@@ -2341,8 +2341,8 @@ def _load_ai_models():
             from transformers import pipeline
             import torch
         except ImportError:
-            print("  AI analysis needs extra packages that are not installed (run install-ai-windows.bat or")
-            print("  install-ai-mac-linux.sh once). Using the lexicon for this run.")
+            print("  AI analysis packages are not installed (run install-ai-windows.bat or install-ai-mac.command).")
+            print("  Using the lexicon for this run.")
             _NLP["tried"] = False   # check again on the next run, after the user installs them
             return False
         dev = 0 if torch.cuda.is_available() else -1

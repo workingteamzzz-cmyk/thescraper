@@ -14,10 +14,12 @@ Berjalan di laptop sendiri (tanpa Google Colab), tampilan English, alur Step 1�
 4. Browser terbuka otomatis di http://localhost:8765. Jendela hitam (server) harus tetap terbuka selama dipakai.
 5. Step 1 → isi API key → **Save keys**. Key disimpan di file `.env` di laptop (tidak ikut ke GitHub).
 
-### Mode analisis AI (opsional, paling akurat)
+### Analisis AI (sentiment & emotion)
 
-Jalankan sekali `install-ai-windows.bat` (Mac: `install-ai-mac.command`), lalu restart aplikasi.
-Model (±2 GB) diunduh otomatis saat pertama dipakai. Tanpa ini, analisis memakai **Lexicon** (instan).
+Sudah termasuk: saat pertama kali dijalankan, start script otomatis memasang paket AI dan mengunduh
+modelnya (±2–3 GB, 5–15 menit tergantung internet). Setelah itu tidak diulang lagi.
+Kalau gagal (misalnya internet putus), aplikasi tetap jalan memakai Lexicon; ulangi kapan saja dengan
+`install-ai-windows.bat` (Windows) atau `install-ai-mac.command` (Mac).
 
 ### Catatan Mac
 

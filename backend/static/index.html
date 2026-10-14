@@ -372,7 +372,7 @@ async function init() {
   const SC = scenarios();
   $("#scenario").innerHTML = Object.keys(SC).map(s => `<option>${esc(s)}</option>`).join("");
   $("#outDir").textContent = "Output folder: " + CFG.output_dir;
-  $("#aiState").textContent = CFG.ai_available ? "" : "AI packages not installed — run install-ai once, otherwise the lexicon is used.";
+  $("#aiState").textContent = CFG.ai_available ? "" : "AI packages not installed — run install-ai-windows.bat or install-ai-mac.command; until then the lexicon is used.";
   showKeys(CFG);
   load(CFG.defaults);
 
