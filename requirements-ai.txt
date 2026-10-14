@@ -1,0 +1,5 @@
+# Opsional: untuk mode analisis "AI model" (sentimen & emosi). Tanpa ini, otomatis pakai leksikon.
+# Unduhan pertama model ±2 GB.
+transformers>=4.40
+torch
+sentencepiece
