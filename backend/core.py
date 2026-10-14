@@ -1,8 +1,8 @@
-"""Social Scraper — core logic (port dari notebook Colab v58).
+"""Social Scraper — core logic (ported from the Colab notebook v58).
 
-Logika scraping, parsing, filter, sentimen & layout Excel diambil apa adanya dari
-notebook; yang diubah hanya bagian khusus Colab (widget, Google Drive, files.download)
-supaya bisa jalan di laptop. API key dibaca dari file .env / environment.
+Scraping, parsing, filters, sentiment and the Excel layout are taken from the notebook;
+only the Colab-specific parts (widgets, Google Drive, files.download) were replaced so it
+runs on a laptop. API keys are read from the .env file / environment.
 """
 import os
 
@@ -12,7 +12,7 @@ OUTPUT_DIR = os.path.abspath(os.environ.get("OUTPUT_DIR") or os.path.join(os.pat
 
 
 def set_api_keys(api_key=None, twitter_key=None):
-    """Ganti API key saat runtime (dari UI) tanpa restart server."""
+    """Change API keys at runtime (from the UI) without restarting the server."""
     global API_KEY, TWITTER_API_KEY
     if api_key is not None:
         API_KEY = api_key.strip()
@@ -36,17 +36,18 @@ HEADERS = {"x-api-key": API_KEY}
 
 # ---- Akuntansi request + rem anggaran kredit ----
 _REQN = {"total": 0, "fase": {}, "twitter": 0, "other": 0}
-CURPHASE = {"name": "persiapan"}
+CURPHASE = {"name": "setup"}
 BUDGET = {"max": 0, "warned": False}
 
 class BudgetExceeded(Exception):
     pass
 
 class StopRequested(BudgetExceeded):
-    """Dipicu tombol Stop di UI: semua request berikutnya dibatalkan, data yang sudah ada tetap disimpan."""
+    """Raised by the Stop button: further requests are cancelled, collected data is kept."""
     pass
 
 STOP = {"flag": False}
+NET_RETRIES = 3
 
 # Domain penyedia Twitter (getxapi) — request ke sini TIDAK dihitung ke batas kredit,
 # karena pakai saldo/paket terpisah. Twitter selalu "unlimited" terhadap Credit cap.
@@ -60,14 +61,14 @@ from requests import api as _rq_api
 def _counting_get(*a, _orig=_rq_api.get, **k):
     url = a[0] if a else k.get("url", "")
     if STOP["flag"]:
-        raise StopRequested("dihentikan oleh user")
+        raise StopRequested("stopped by user")
     is_twitter = _TWITTER_PROVIDER_HOST in str(url)
     # Rem anggaran HANYA untuk penyedia non-Twitter (ScrapeCreators).
     if (not is_twitter) and BUDGET["max"] and _REQN["other"] >= BUDGET["max"]:
         if not BUDGET["warned"]:
             BUDGET["warned"] = True
-            print(f"\n\U0001F6D1 BATAS KREDIT TERCAPAI ({BUDGET['max']} request non-Twitter) \u2014 scraping platform non-Twitter dihentikan; Twitter tetap jalan; data tersimpan.")
-        raise BudgetExceeded("batas kredit per run tercapai (non-Twitter)")
+            print(f"\n\U0001F6D1 CREDIT CAP REACHED ({BUDGET['max']} non-Twitter requests) \u2014 non-Twitter scraping stopped; Twitter continues; collected data is kept.")
+        raise BudgetExceeded("credit cap per run reached (non-Twitter)")
     _REQN["total"] += 1
     if is_twitter:
         _REQN["twitter"] += 1
@@ -75,7 +76,21 @@ def _counting_get(*a, _orig=_rq_api.get, **k):
         _REQN["other"] += 1
     ph = CURPHASE["name"]
     _REQN["fase"][ph] = _REQN["fase"].get(ph, 0) + 1
-    return _orig(*a, **k)
+    # Retry transient failures (dropped connection, read timeout, 502/503/504) so one hiccup
+    # on home Wi-Fi does not lose a whole task. 429 is left to the callers' own back-off.
+    for attempt in range(NET_RETRIES + 1):
+        try:
+            r = _orig(*a, **k)
+            if r.status_code in (502, 503, 504) and attempt < NET_RETRIES:
+                time.sleep(3 * (attempt + 1))
+                continue
+            return r
+        except (requests.ConnectionError, requests.Timeout, requests.exceptions.ChunkedEncodingError):
+            if attempt >= NET_RETRIES or STOP["flag"]:
+                raise
+            time.sleep(3 * (attempt + 1))
+        if STOP["flag"]:
+            raise StopRequested("stopped by user")
 _counting_get._is_counting_wrapper = True
 requests.get = _counting_get
 
@@ -83,9 +98,9 @@ def print_usage_breakdown():
     if not _REQN["total"]:
         return
     parts = ", ".join(f"{k}: {v}" for k, v in sorted(_REQN["fase"].items(), key=lambda x: -x[1]))
-    print(f"\U0001F4CB Rincian request API run ini \u2014 total {_REQN['total']} ({parts})")
-    print(f"   \U0001F4B3 Non-Twitter (kena batas): {_REQN['other']} \u2022 Twitter/getxapi (unlimited, saldo terpisah): {_REQN['twitter']}")
-    print("   (1 request \u2248 1 kredit untuk mayoritas endpoint; angka pasti = selisih saldo di bawah)")
+    print(f"\U0001F4CB API requests this run \u2014 total {_REQN['total']} ({parts})")
+    print(f"   \U0001F4B3 Non-Twitter (counted toward cap): {_REQN['other']} \u2022 Twitter/getxapi (separate balance): {_REQN['twitter']}")
+    print("   (1 request \u2248 1 credit for most endpoints; exact usage = balance difference below)")
 WIB = timezone(timedelta(hours=7))
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -328,9 +343,9 @@ def fetch_profile(plat_short, username, log):
                        "user_id": get_user_id(data) or get_user_id(node) or str(g(node, "id", "pk", "id_str", "rest_id", "channelId", "uid", "user_id") or ""),
                        "profile_image": get_profile_image(data) or get_profile_image(node)}
             else:
-                log(f"    profil @{username}: HTTP {r.status_code}")
+                log(f"    profile @{username}: HTTP {r.status_code}")
         except Exception as e:
-            log(f"    profil @{username}: {e}")
+            log(f"    profile @{username}: {e}")
     _prof_cache[key] = val
     return val
 
@@ -598,7 +613,7 @@ def build_url(platform, item, user, pid):
 _DRIVE = {"dir": None}
 
 def ensure_drive():
-    """Versi lokal: folder output di laptop (pengganti Google Drive)."""
+    """Local version: output folder on the laptop (replaces Google Drive)."""
     if _DRIVE["dir"]:
         return _DRIVE["dir"]
     import os
@@ -777,7 +792,7 @@ def _cap_retweets(rows, log):
         lim = []
         if per: lim.append(f"maks {per}/tweet-asli")
         if tot: lim.append(f"maks {tot} total")
-        log(f"  Twitter: {dropped} retweet dibuang oleh batas ({', '.join(lim)}); {total_rt} RT disimpan")
+        log(f"  Twitter: {dropped} retweet(s) dropped by limits ({', '.join(lim)}); {total_rt} RT kept")
     return out
 
 def tw_search_with_retweets(tterm, max_items, want_raw, log):
@@ -789,11 +804,11 @@ def tw_search_with_retweets(tterm, max_items, want_raw, log):
     if rows and _has_rt(rows):
         return _cap_retweets(rows, log)  # operator dihormati -> selesai, 1x biaya
     if not rows:
-        log("  Twitter: 0 hasil dengan include: \u2014 mengambil tweet tanpa operator...")
+        log("  Twitter: 0 results with include: \u2014 retrying without the operator...")
         rows = scrape_twitter_getx(tterm, max_items, want_raw, log)
     if _has_rt(rows):
         return _cap_retweets(rows, log)
-    log("  Twitter: hasil tanpa RT \u2014 menarik stream retweet via filter:nativeretweets...")
+    log("  Twitter: no retweets in results \u2014 fetching retweets via filter:nativeretweets...")
     rt_rows = scrape_twitter_getx(tterm + " filter:nativeretweets", max_items, want_raw, log)
     seen_ids = {str(r.get("id")) for r in rows}
     extra = [r for r in rt_rows if str(r.get("id")) not in seen_ids]
@@ -804,9 +819,9 @@ def tw_search_with_retweets(tterm, max_items, want_raw, log):
     rows = _cap_retweets(rows, log)
     extra = [r for r in rows if r.get("type") == "retweet"]
     if extra:
-        log(f"  Twitter: {len(extra)} retweet setelah pembatasan")
+        log(f"  Twitter: {len(extra)} retweet(s) after limits")
     else:
-        log("  Twitter: provider tidak mengembalikan retweet lewat kedua operator \u2014 kemungkinan keterbatasan API; hubungi CS provider.")
+        log("  Twitter: the provider returned no retweets for either operator \u2014 likely an API limitation.")
     return rows + extra
 
 
@@ -840,7 +855,7 @@ def scrape(platform, term, max_items, since_d, until_d, want_raw, log, s_ep=None
         try:
             r = requests.get(f"{BASE}{cfg['path']}", headers=HEADERS, params=params, timeout=45)
         except Exception as e:
-            log(f"  koneksi error: {e}"); break
+            log(f"  connection error: {e}"); break
         if r.status_code != 200:
             body = r.text[:160]
             if r.status_code == 404 or "not_found" in body or "No posts" in body:
@@ -896,7 +911,7 @@ def scrape(platform, term, max_items, since_d, until_d, want_raw, log, s_ep=None
                 break
         page += 1
         if s_ep and not cfg.get("dates") and page_dated >= 5 and page_inrange == 0:
-            log(f"  {platform}: 1 halaman penuh di luar rentang waktu -> stop pagination (hemat kredit), {len(rows)} rows")
+            log(f"  {platform}: a full page is outside the time range -> stopping pagination (saves credits), {len(rows)} rows")
             break
         cursor = None
         if isinstance(data, dict):
@@ -998,7 +1013,7 @@ def _native_keyword_search(platform, ep_candidates, term, max_items, want_raw, l
     cands = ([( _NATIVE_KW[key]["path"], _NATIVE_KW[key]["param"] )]
              if _NATIVE_KW.get(key) else ep_candidates)
     if key not in _NATIVE_KW:
-        log(f"  \U0001F50D {platform}: menjajaki endpoint keyword NATIVE provider...")
+        log(f"  \U0001F50D {platform}: probing the provider's native keyword endpoint...")
     for path, qp in cands:
         try:
             r = requests.get(BASE + path, headers=HEADERS, params={qp: term, "count": max_items}, timeout=40)
@@ -1013,10 +1028,10 @@ def _native_keyword_search(platform, ep_candidates, term, max_items, want_raw, l
         items = find_items(r.json())
         if not items:
             if key not in _NATIVE_KW:
-                log(f"     {path} -> 200 tapi 0 item")
+                log(f"     {path} -> 200 but 0 items")
             continue
         _NATIVE_KW[key] = {"path": path, "param": qp}
-        log(f"  \u2705 {platform}: endpoint keyword native '{path}' dipakai ({len(items)} item halaman-1).")
+        log(f"  \u2705 {platform}: using native keyword endpoint '{path}' ({len(items)} items on page 1).")
         rows = []
         pshort = platform.split(" ")[0]
         for it_raw in items[:max_items]:
@@ -1041,7 +1056,7 @@ def _native_keyword_search(platform, ep_candidates, term, max_items, want_raw, l
         return rows
     if key not in _NATIVE_KW:
         _NATIVE_KW[key] = False
-        log(f"  \u2139\uFE0F {platform}: tak ada endpoint keyword native \u2014 memakai Google (indeks terbatas).")
+        log(f"  \u2139\uFE0F {platform}: no native keyword endpoint \u2014 using Google (limited index).")
     return None
 
 def scrape_fb_via_google(term, max_items, want_raw, log, s_ep=None, u_ep=None):
@@ -1103,9 +1118,9 @@ def scrape_fb_via_google(term, max_items, want_raw, log, s_ep=None, u_ep=None):
                 continue
             chunk_inr += 1; total_inr += 1; rows.append(row)
         if got_dated >= 10 and chunk_inr == 0 and total_inr == 0:
-            log("  Facebook: 10+ link pertama semua di luar rentang waktu -> berhenti (hemat kredit)")
+            log("  Facebook: first 10+ links are all outside the time range -> stopping (saves credits)")
             break
-    log(f"  Facebook: {len(rows)} posts dalam rentang")
+    log(f"  Facebook: {len(rows)} posts in range")
     return rows
 
 GETX_BASE = _b64.b64decode("aHR0cHM6Ly9hcGkuZ2V0eGFwaS5jb20=").decode()
@@ -1154,7 +1169,7 @@ def _fetch_tweet_getx(url, want_raw, log):
     except Exception as e:
         log(f"  Twitter error: {e}"); return None
     if r.status_code != 200:
-        log(f"  Twitter HTTP {r.status_code}: {r.text[:90]} -> retry sekali...")
+        log(f"  Twitter HTTP {r.status_code}: {r.text[:90]} -> retrying once...")
         time.sleep(2)
         try:
             r = requests.get(GETX_BASE + "/twitter/tweet/detail", params={"id": tid},
@@ -1163,7 +1178,7 @@ def _fetch_tweet_getx(url, want_raw, log):
             log(f"  Twitter error: {e}"); return None
         if r.status_code != 200:
             log(f"  Twitter HTTP {r.status_code} (final): {r.text[:90]}")
-            log("  Catatan: sebagian ID retweet tidak bisa di-lookup langsung oleh API; coba tempel URL tweet ASLI-nya.")
+            log("  Note: some retweet IDs cannot be looked up directly; try pasting the ORIGINAL tweet URL.")
             return None
     data = r.json()
     it = pick_post(data)
@@ -1454,7 +1469,7 @@ def scrape_profile(url, max_items, want_raw, log, since_d="", until_d="", s_ep=N
                     window_until = nu
                     pag_mode, pag_name, cursor_kv = "datewindow", None, None
                     from datetime import datetime as _dtm
-                    log(f"  {plat}: cursor mengulang -> lanjut via jendela TANGGAL s/d {_dtm.fromtimestamp(window_until, WIB):%Y-%m-%d} (ikut timeframe)")
+                    log(f"  {plat}: cursor repeated -> continuing via DATE window up to {_dtm.fromtimestamp(window_until, WIB):%Y-%m-%d} (follows the time range)")
                     continue
             if not tried_recovery:
                 tried_recovery = True
@@ -1466,18 +1481,18 @@ def scrape_profile(url, max_items, want_raw, log, since_d="", until_d="", s_ep=N
                     pag_mode, pag_name = rec
                     if cur0:
                         cursor_kv = cur0
-                    log(f"  {plat}: pagination pulih via parameter '{pag_name}' -> lanjut mengambil")
+                    log(f"  {plat}: pagination recovered via parameter '{pag_name}' -> continuing")
                     continue
             if pag_mode == "datewindow":
                 pag_mode = "datewindow_exhausted"   # jendela tanggal pun tak memberi post baru -> benar2 habis
             if s_ep or u_ep:
-                log(f"  {plat}: berhenti di {len(rows)} post \u2014 data sampai batas rentang waktu sudah terambil (atau akun tak punya post lebih tua di rentang).")
+                log(f"  {plat}: stopped at {len(rows)} posts \u2014 everything up to the time-range boundary was fetched (or the account has no older posts in range).")
             else:
-                log(f"  {plat}: provider mengulang halaman & semua metode pagination gagal -> berhenti di {len(rows)} post")
-                log(f"    (tip: aktifkan filter waktu agar bisa lanjut via paging tanggal; atau lapor CS: endpoint {path} tak merespons cursor)")
+                log(f"  {plat}: provider repeated the page and all pagination methods failed -> stopped at {len(rows)} posts")
+                log(f"    (tip: enable the time filter to continue via date paging; endpoint {path} ignores the cursor)")
             break
         if s_ep and page_dated > 0 and page_older == page_dated:
-            log(f"  {plat}: seluruh halaman lebih tua dari rentang waktu -> stop pagination (hemat kredit), {len(rows)} post"); break
+            log(f"  {plat}: whole page is older than the time range -> stopping pagination (saves credits), {len(rows)} posts"); break
         cur = _find_cursor(data)
         more = None
         if isinstance(data, dict):
@@ -1499,7 +1514,7 @@ def scrape_profile(url, max_items, want_raw, log, since_d="", until_d="", s_ep=N
                     window_until = nu
                     pag_mode, pag_name, cursor_kv = "datewindow", None, None
                     from datetime import datetime as _dtm
-                    log(f"  {plat}: cursor mengulang -> lanjut via jendela TANGGAL s/d {_dtm.fromtimestamp(window_until, WIB):%Y-%m-%d} (ikut timeframe)")
+                    log(f"  {plat}: cursor repeated -> continuing via DATE window up to {_dtm.fromtimestamp(window_until, WIB):%Y-%m-%d} (follows the time range)")
                     time.sleep(0.2); continue
             if not tried_recovery:
                 tried_recovery = True
@@ -1507,13 +1522,13 @@ def scrape_profile(url, max_items, want_raw, log, since_d="", until_d="", s_ep=N
                                           hint_skip=pag_name or CURSOR_PARAM.get(plat, "cursor"))
                 if rec:
                     pag_mode, pag_name = rec
-                    log(f"  {plat}: cursor tak berubah tapi pagination pulih via '{pag_name}' -> lanjut")
+                    log(f"  {plat}: cursor unchanged but pagination recovered via '{pag_name}' -> continuing")
                     cursor_kv = cur
                     time.sleep(0.2)
                     continue
             if s_ep or u_ep:
-                log(f"  {plat}: {len(rows)} post \u2014 seluruh rentang waktu sudah tercakup."); break
-            log(f"  {plat}: cursor tidak berubah & varian lain gagal -> berhenti di {len(rows)} post"); break
+                log(f"  {plat}: {len(rows)} posts \u2014 the whole time range is covered."); break
+            log(f"  {plat}: cursor unchanged and other variants failed -> stopped at {len(rows)} posts"); break
         cursor_kv = cur
         time.sleep(0.2)
     log(f"  {plat}: {len(rows)} posts")
@@ -1562,7 +1577,7 @@ def _threads_cmt_ep(post_url, post_id=None):
             kinds.append((k, p))
     paths = ("/v1/threads/post/replies", "/v1/threads/post/comments", "/v2/threads/post/comments")
     total = len(paths) * len(kinds)
-    print(f"  \U0001F50D Threads: menjajaki endpoint komentar (sekali per sesi, maks {total} request)...")
+    print(f"  \U0001F50D Threads: probing the comments endpoint (once per session, max {total} requests)...")
     for path in paths:
         for kind, params in kinds:
             try:
@@ -1573,15 +1588,15 @@ def _threads_cmt_ep(post_url, post_id=None):
                       (f", {n} item" if r.status_code == 200 else ""))
                 if r.status_code == 200 and n:
                     _THREADS_CMT["path"], _THREADS_CMT["kind"] = path, kind
-                    print("  \u2705 Threads: endpoint komentar ditemukan, dipakai seterusnya.")
+                    print("  \u2705 Threads: comments endpoint found and cached.")
                     return path
             except BudgetExceeded:
                 raise
             except Exception as e:
                 print(f"     {path} [{kind}] -> error: {type(e).__name__}")
-    print("  \u2139\uFE0F Threads: dari semua kombinasi yang dicoba, tidak ada yang mengembalikan komentar.")
-    print("     Salin log di atas ke pengembang \u2014 404 di semua baris = endpoint memang tak tersedia;")
-    print("     400/422 = endpoint ada tapi format parameternya lain (bisa disesuaikan cepat).")
+    print("  \u2139\uFE0F Threads: none of the tried combinations returned comments.")
+    print("     404 on every line = endpoint not available;")
+    print("     400/422 = endpoint exists but expects different parameters.")
     return None
 
 def comment_url(platform, post_url, cid, it=None):
@@ -1638,7 +1653,7 @@ def _probe_comment_params(platform, ep, post_url, post_id):
         if key in seen_pairs: continue
         seen_pairs.add(key); uniq.append((nm, fn))
     vals = uniq
-    print(f"  \U0001F50D {platform}: menjajaki parameter komentar (sekali per sesi, maks {len(vals)} request)...")
+    print(f"  \U0001F50D {platform}: probing comment parameters (once per session, max {len(vals)} requests)...")
     for name, fn in vals:
         try:
             val = fn(post_url, post_id)
@@ -1649,21 +1664,21 @@ def _probe_comment_params(platform, ep, post_url, post_id):
             print(f"     {name}={str(val)[:26]} -> HTTP {r.status_code}" + (f", {n} item" if r.status_code == 200 else ""))
             if r.status_code == 200 and n:
                 _CMT_PARAM[platform] = {"name": name, "val": fn}
-                print(f"  \u2705 {platform}: parameter komentar ditemukan ('{name}'), dipakai seterusnya.")
+                print(f"  \u2705 {platform}: comment parameter found ('{name}') and cached.")
                 return {name: val}
         except BudgetExceeded:
             raise
         except Exception as e:
             print(f"     {name} -> error: {type(e).__name__}")
     _CMT_PARAM[platform] = None
-    print(f"  \u2139\uFE0F {platform}: tak ada kombinasi parameter yang mengembalikan komentar.")
+    print(f"  \u2139\uFE0F {platform}: no parameter combination returned comments.")
     try:
         val0 = vals[0][1](post_url, post_id)
         r0 = requests.get(BASE + ep, headers=HEADERS, params={vals[0][0]: val0}, timeout=30)
         body = r0.text[:300].replace("\n", " ")
-        print(f"     contoh respons (HTTP {r0.status_code}): {body}")
-        print("     \u2192 Kirim baris ini ke pengembang: bila ada struktur data tapi tak terbaca = soal parsing;")
-        print("       bila HTTP 4xx / pesan error = endpoint/param salah (lapor CS provider).")
+        print(f"     sample response (HTTP {r0.status_code}): {body}")
+        print("     \u2192 Data present but unreadable = parsing issue;")
+        print("       HTTP 4xx / error message = wrong endpoint or parameter.")
     except Exception:
         pass
     return None
@@ -1814,9 +1829,9 @@ def scrape_ig_via_google(term, max_items, want_raw, log, s_ep=None, u_ep=None):
                 continue
             chunk_inr += 1; total_inr += 1; rows.append(row)
         if got_dated >= 10 and chunk_inr == 0 and total_inr == 0:
-            log("  Instagram: 10+ link pertama semua di luar rentang waktu -> berhenti (hemat kredit)")
+            log("  Instagram: first 10+ links are all outside the time range -> stopping (saves credits)")
             break
-    log(f"  Instagram(keyword): {len(rows)} posts dalam rentang")
+    log(f"  Instagram(keyword): {len(rows)} posts in range")
     return rows
 
 def _fetch_link(url, want_raw, log):
@@ -1908,7 +1923,7 @@ def fetch_retweeters(tweet_url, want_raw, log, cap=0):
                 "query": "(retweeters)",
             })
         if rows:
-            log(f"  Twitter: {len(rows)} retweeter via endpoint {path}")
+            log(f"  Twitter: {len(rows)} retweeter(s) via endpoint {path}")
             return _cap_retweets(rows, log)
     # b) fallback: cari retweet lewat teks 'RT @<author>:' tweet asli
     orig = _fetch_tweet_getx(tweet_url, False, lambda m: None)
@@ -1920,9 +1935,9 @@ def fetch_retweeters(tweet_url, want_raw, log, cap=0):
             r["type"] = "retweet"; r["parent_id"] = tid; r["query"] = "(retweeters/search)"
             rows.append(r)
         if rows:
-            log(f"  Twitter: {len(rows)} retweet via pencarian teks RT")
+            log(f"  Twitter: {len(rows)} retweet(s) via RT text search")
             return _cap_retweets(rows, log)
-    log("  Twitter: retweeter tidak tersedia lewat endpoint maupun pencarian untuk tweet ini.")
+    log("  Twitter: retweeters are not available via endpoint or search for this tweet.")
     return []
 
 def scrape_links(urls_all, want_raw, merge_dupes, log, progress=None):
@@ -2185,8 +2200,21 @@ _STEM_PREFIXES = (("meng", ("", "k", "g")), ("meny", ("s",)), ("mem", ("", "p", 
                   ("me", ("",)), ("di", ("",)), ("ke", ("",)), ("se", ("",)), ("pe", ("",)))
 _STEM_SUFFIXES = ("lah", "kah", "tah", "pun", "nya", "ku", "mu", "kan", "an", "i")
 
+# Topic/institution nouns whose stem is emotional but the word itself is neutral
+# (e.g. "kebijakan" = policy, not "bijak" = wise; "pemilu" = election, not "pilu" = sad).
+_NEUTRAL_WORDS = {
+    "kebijakan", "kebijakannya", "pemilu", "pemilihan", "kesehatan", "keamanan", "keselamatan",
+    "ketertiban", "kesejahteraan", "perlindungan", "terbaru", "keadilan", "kebersihan", "pembangunan",
+    "pendidikan", "kemanusiaan", "keuangan", "kepercayaan", "kesenian", "perdamaian",
+}
+_NEUTRAL_PHRASES = ("rumah sakit", "sakit jiwa", "kementerian kesehatan", "dinas kesehatan",
+                    "badan keamanan", "lembaga keamanan", "hari raya", "selamat pagi",
+                    "selamat siang", "selamat sore", "selamat malam")
+
 def _lex_lookup(w):
-    """Cari kata di kamus: bentuk asli -> huruf berulang dinormalkan -> lepas imbuhan Indonesia."""
+    """Look a word up: exact form -> collapsed repeated letters -> strip Indonesian affixes."""
+    if w in _NEUTRAL_WORDS:
+        return None
     hit = _LEX_UNI.get(w)
     if hit:
         return hit
@@ -2230,6 +2258,9 @@ def _analyze_lex(text):
     t = re.sub(r"https?://\S+|www\.\S+", " ", t)   # buang URL
     t = re.sub(r"@\w+", " ", t)                     # buang mention
     t = t.replace("#", " ")
+    for ph in _NEUTRAL_PHRASES:
+        if ph in t:
+            t = t.replace(ph, " ")
     emo_score = {e: 0.0 for e in _EMO_WORDS}
     sent = 0.0
     # 1) emoji
@@ -2307,19 +2338,17 @@ def _load_ai_models():
     _NLP["tried"] = True
     try:
         try:
-            from transformers import pipeline  # noqa
+            from transformers import pipeline
+            import torch
         except ImportError:
-            print("  \U0001F4E6 Menginstal transformers (sekali per sesi)...")
-            import subprocess
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q",
-                            "transformers", "torch", "sentencepiece"], check=True)
-            from transformers import pipeline  # noqa
-        from transformers import pipeline
-        import torch
+            print("  AI analysis needs extra packages that are not installed (run install-ai-windows.bat or")
+            print("  install-ai-mac-linux.sh once). Using the lexicon for this run.")
+            _NLP["tried"] = False   # check again on the next run, after the user installs them
+            return False
         dev = 0 if torch.cuda.is_available() else -1
         _NLP["gpu"] = (dev == 0)
-        print("  \U0001F9E0 Memuat model AI (sekali per sesi; unduhan pertama \u00b12 GB, 1\u20133 menit"
-              + (", GPU aktif" if dev == 0 else ", CPU") + ")...")
+        print("  Loading AI models (first time downloads ~2 GB and takes a few minutes"
+              + (", using GPU" if dev == 0 else ", using CPU") + ")...")
         _NLP["sent"] = pipeline("sentiment-analysis",
                                 model="cardiffnlp/twitter-xlm-roberta-base-sentiment",
                                 device=dev, truncation=True, max_length=128)
@@ -2330,10 +2359,11 @@ def _load_ai_models():
                                   model="j-hartmann/emotion-english-distilroberta-base",
                                   device=dev, truncation=True, max_length=128)
         _NLP["ok"] = True
-        print("  \u2705 Model AI siap.")
+        print("  \u2705 AI models ready.")
     except Exception as e:
-        print(f"  \u26A0\uFE0F Model AI gagal dimuat ({type(e).__name__}: {str(e)[:70]}) \u2014 memakai leksikon.")
+        print(f"  AI models failed to load ({type(e).__name__}: {str(e)[:70]}) \u2014 using the lexicon instead.")
         _NLP["ok"] = False
+        _NLP["tried"] = False   # retry on the next run (e.g. after the internet is back)
     return _NLP["ok"]
 
 def _merge_emotion(model_emo, model_conf, lex_emo, lex_scores):
@@ -2357,12 +2387,12 @@ def analyze_batch(texts):
     try:
         clean = [_clean_for_model(t) or "-" for t in texts]
         if len(clean) > 300 and not _NLP.get("gpu"):
-            print(f"  \u23F3 {len(clean)} baris di CPU \u2014 bisa beberapa menit. Tips: pilih mode Lexicon agar instan, atau pakai laptop dengan GPU NVIDIA.")
+            print(f"  \u23F3 {len(clean)} rows on CPU \u2014 this can take a few minutes. Choose Lexicon for instant results.")
         sents = []
         for k in range(0, len(clean), 256):
             sents.extend(_NLP["sent"](clean[k:k+256], batch_size=32))
             if len(clean) > 256:
-                print(f"  \U0001F9E0 Analisis sentimen: {min(k+256, len(clean))}/{len(clean)} baris...")
+                print(f"  \U0001F9E0 Sentiment analysis: {min(k+256, len(clean))}/{len(clean)} rows...")
         idx_id = [i for i, t in enumerate(clean) if _lang_is_id(t)]
         idx_en = [i for i in range(len(clean)) if i not in idx_id]
         emo_out = [("neutral", 0.0)] * len(clean)
@@ -2374,13 +2404,16 @@ def analyze_batch(texts):
                 emo_out[i] = (_EN_EMO_MAP.get(str(r["label"]).lower(), "neutral"), float(r["score"]))
         out = []
         for i in range(len(texts)):
+            if clean[i] == "-":
+                out.append(("neutral", "neutral"))   # empty / link-only text: nothing to analyse
+                continue
             slabel = str(sents[i]["label"]).lower()
             sent = slabel if slabel in ("positive", "negative", "neutral") else lex[i][0]
             emo = _merge_emotion(emo_out[i][0], emo_out[i][1], lex[i][1], lex[i][2])
             out.append((sent, emo))
         return out
     except Exception as e:
-        print(f"  \u26A0\uFE0F Inferensi AI gagal ({type(e).__name__}) \u2014 baris ini memakai leksikon.")
+        print(f"  \u26A0\uFE0F AI inference failed ({type(e).__name__}) \u2014 these rows use the lexicon.")
         return [(s, e) for s, e, _ in lex]
 
 # ---------------- Layout output mengikuti Sample_Crawling.xlsx ----------------
@@ -2404,7 +2437,7 @@ def add_rekap_codebook(xp, df):
     sec_font = Font(bold=True, size=12, color="1F4E79")
 
     # ---------- Sheet Rekap ----------
-    ws = wb.create_sheet("Rekap")
+    ws = wb.create_sheet("Summary")
     r = 1
     def sec(title):
         nonlocal r
@@ -2422,59 +2455,59 @@ def add_rekap_codebook(xp, df):
 
     posts = df[df["Sub Type"] != "comment"] if "Sub Type" in df.columns else df
     cmts = df[df["Sub Type"] == "comment"] if "Sub Type" in df.columns else df.iloc[0:0]
-    sec("RINGKASAN UMUM")
+    sec("OVERVIEW")
     dr = ""
     if "Date" in df.columns and df["Date"].notna().any():
         ds = df["Date"].astype(str)
         ds = ds[ds.str.match(r"\d{4}-\d{2}-\d{2}")]
         if len(ds):
-            dr = f"{ds.min()} s/d {ds.max()}"
-    table(["Metrik", "Nilai"], [
-        ["Total baris", len(df)],
-        ["Unggahan (post/tweet/retweet/quoted)", len(posts)],
-        ["Komentar/reply", len(cmts)],
-        ["Akun unik", df["Username"].nunique() if "Username" in df.columns else ""],
-        ["Rentang tanggal data", dr],
+            dr = f"{ds.min()} to {ds.max()}"
+    table(["Metric", "Value"], [
+        ["Total rows", len(df)],
+        ["Posts (post/tweet/retweet/quoted)", len(posts)],
+        ["Comments/replies", len(cmts)],
+        ["Unique accounts", df["Username"].nunique() if "Username" in df.columns else ""],
+        ["Date range", dr],
     ])
 
     if "Platform" in df.columns:
-        sec("PER PLATFORM")
+        sec("BY PLATFORM")
         vc = df.groupby("Platform").agg(
-            Baris=("Platform", "size"),
+            Rows=("Platform", "size"),
             Likes=("Likes", lambda s: int(__import__("pandas").to_numeric(s, errors="coerce").fillna(0).sum())),
             Reply=("Reply", lambda s: int(__import__("pandas").to_numeric(s, errors="coerce").fillna(0).sum())),
             Shares=("Shares", lambda s: int(__import__("pandas").to_numeric(s, errors="coerce").fillna(0).sum())),
         )
-        table(["Platform", "Baris", "Total Likes", "Total Reply", "Total Shares"],
+        table(["Platform", "Rows", "Total Likes", "Total Reply", "Total Shares"],
               [[i] + list(row) for i, row in vc.iterrows()])
 
-    for col, title in (("Sentiment", "DISTRIBUSI SENTIMEN"), ("Emotion", "DISTRIBUSI EMOSI (PLUTCHIK)")):
+    for col, title in (("Sentiment", "SENTIMENT DISTRIBUTION"), ("Emotion", "EMOTION DISTRIBUTION (PLUTCHIK)")):
         if col in df.columns:
             sec(title)
             vc = df[col].value_counts()
             tot = max(1, int(vc.sum()))
-            table([col, "Jumlah", "%"], [[k, int(v), f"{100*int(v)/tot:.1f}%"] for k, v in vc.items()])
+            table([col, "Count", "%"], [[k, int(v), f"{100*int(v)/tot:.1f}%"] for k, v in vc.items()])
 
     if {"Username", "Likes"} <= set(df.columns) and len(posts):
-        sec("TOP 10 AKUN PALING AKTIF (jumlah unggahan)")
+        sec("TOP 10 MOST ACTIVE ACCOUNTS (posts)")
         vc = posts["Username"].value_counts().head(10)
-        table(["Username", "Unggahan"], [[k, int(v)] for k, v in vc.items()])
+        table(["Username", "Posts"], [[k, int(v)] for k, v in vc.items()])
         import pandas as _pd
         eng = posts.assign(_e=_pd.to_numeric(posts["Likes"], errors="coerce").fillna(0)
                               + _pd.to_numeric(posts.get("Reply"), errors="coerce").fillna(0)
                               + _pd.to_numeric(posts.get("Shares"), errors="coerce").fillna(0))
         top = eng.sort_values("_e", ascending=False).head(10)
-        sec("TOP 10 UNGGAHAN ENGAGEMENT TERTINGGI (likes+reply+share)")
-        table(["Username", "Engagement", "Teks (awal)"],
+        sec("TOP 10 POSTS BY ENGAGEMENT (likes+reply+shares)")
+        table(["Username", "Engagement", "Text (start)"],
               [[t["Username"], int(t["_e"]), str(t.get("Text", ""))[:80]] for _, t in top.iterrows()])
 
     if "Date" in df.columns:
         ds = df["Date"].astype(str)
         ok = ds.str.match(r"\d{4}-\d{2}-\d{2}")
         if ok.any():
-            sec("VOLUME PER TANGGAL")
+            sec("VOLUME BY DATE")
             vc = ds[ok].value_counts().sort_index()
-            table(["Tanggal", "Baris"], [[k, int(v)] for k, v in vc.items()])
+            table(["Date", "Rows"], [[k, int(v)] for k, v in vc.items()])
 
     for col_cells in ws.columns:
         w = max((len(str(c.value)) for c in col_cells if c.value is not None), default=10)
@@ -2483,28 +2516,28 @@ def add_rekap_codebook(xp, df):
     # ---------- Sheet Codebook ----------
     cb = wb.create_sheet("Codebook")
     cb_rows = [
-        ("No", "Nomor urut baris"),
-        ("Sentiment", "Sentimen otomatis (NLP leksikon ID+EN+emoji): positive / negative / neutral"),
-        ("Username", "Handle akun (tanpa spasi). Khusus komentator Facebook bisa berupa nama tampilan"),
-        ("User ID", "ID unik akun di platform (tetap walau username ganti)"),
-        ("Follower", "Jumlah follower akun (bila tersedia / diaktifkan)"),
-        ("Text", "Isi unggahan/komentar. Retweet terpotong disusun ulang dari tweet asli"),
-        ("Date / Time", "Tanggal & jam publish, zona WIB (GMT+7)"),
-        ("Likes / Reply / Shares", "Metrik engagement. Retweet memakai metrik tweet asli bila metrik sendiri kosong"),
-        ("Url", "Tautan langsung ke unggahan"),
-        ("Emotion", "Emosi dominan Plutchik: joy, trust, fear, surprise, sadness, disgust, anger, anticipation, neutral"),
-        ("User Image", "URL foto profil akun"),
+        ("No", "Row number"),
+        ("Sentiment", "Automatic sentiment (AI model and/or ID+EN+emoji lexicon): positive / negative / neutral"),
+        ("Username", "Account handle (no spaces). Facebook commenters may show a display name"),
+        ("User ID", "Unique account ID on the platform (stable even if the username changes)"),
+        ("Follower", "Account follower count (when available / enabled)"),
+        ("Text", "Post/comment text. Truncated retweets are rebuilt from the original tweet"),
+        ("Date / Time", "Publish date & time, WIB (GMT+7)"),
+        ("Likes / Reply / Shares", "Engagement metrics. Retweets use the original tweet's metrics when their own are empty"),
+        ("Url", "Direct link to the post"),
+        ("Emotion", "Dominant Plutchik emotion: joy, trust, fear, surprise, sadness, disgust, anger, anticipation, neutral"),
+        ("User Image", "Profile picture URL"),
         ("Platform", "twitter / tiktok / youtube / instagram / facebook / threads"),
         ("Sub Type", "Twitter: tweet/retweet/quoted/reply \u2022 Instagram: post/image/video/carousel/comment \u2022 "
                       "Facebook: post/video/link/comment \u2022 TikTok/YouTube/Threads: post/comment"),
-        ("Views Count", "Jumlah tayangan (bila platform menyediakan)"),
-        ("Gender s/d Phsychography", "Kolom coding manual — sengaja kosong, diisi peneliti"),
-        ("Parent ID", "Untuk komentar: ID unggahan induknya"),
-        ("ID", "ID unik unggahan/komentar ini"),
-        ("User ID Parent", "User ID pemilik unggahan induk (post: user id sendiri) — untuk cluster percakapan"),
-        ("Query", "Sumber baris: keyword pencarian, (by link), profile:..., (comment), (reply)"),
+        ("Views Count", "View count (when the platform provides it)"),
+        ("Gender to Phsychography", "Manual coding columns — intentionally empty, filled in by the researcher"),
+        ("Parent ID", "For comments: ID of the parent post"),
+        ("ID", "Unique ID of this post/comment"),
+        ("User ID Parent", "User ID of the parent post's author (posts: own user id) — for conversation clustering"),
+        ("Query", "Row source: search keyword, (by link), profile:..., (comment), (reply)"),
     ]
-    c1 = cb.cell(row=1, column=1, value="Kolom"); c2 = cb.cell(row=1, column=2, value="Penjelasan")
+    c1 = cb.cell(row=1, column=1, value="Column"); c2 = cb.cell(row=1, column=2, value="Description")
     for c in (c1, c2): c.font = hdr_font; c.fill = hdr_fill
     for i, (k, v) in enumerate(cb_rows, 2):
         cb.cell(row=i, column=1, value=k).font = Font(bold=True)
@@ -2543,10 +2576,12 @@ def to_sample_layout(df):
     for c in MANUAL_COLS:
         if c not in df.columns:
             df[c] = None
-    if "Parent ID" not in df.columns:
-        df["Parent ID"] = ""
     if "Sub Type" not in df.columns:
         df["Sub Type"] = "post"
+    # Every output field is always present (empty when the platform does not provide it).
+    for c in SAMPLE_ORDER + ["ID", "User ID Parent", "Query"]:
+        if c != "No" and c not in df.columns:
+            df[c] = ""
     df.insert(0, "No", range(1, len(df) + 1))
     front = [c for c in SAMPLE_ORDER if c in df.columns]
     _pref = ["ID", "User ID Parent", "Query", "Raw JSON"]

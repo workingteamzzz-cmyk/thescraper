@@ -1,5 +1,6 @@
-# Opsional: untuk mode analisis "AI model" (sentimen & emosi). Tanpa ini, otomatis pakai leksikon.
-# Unduhan pertama model ±2 GB.
+# Optional: needed for the "AI model" analysis mode (sentiment & emotion).
+# Without these the app uses the lexicon. Models (~2 GB) download on first use.
 transformers>=4.40
 torch
 sentencepiece
+protobuf

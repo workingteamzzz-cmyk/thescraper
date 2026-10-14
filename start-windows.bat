@@ -1,10 +1,11 @@
 @echo off
 cd /d "%~dp0"
+title Social Scraper
 if not exist .venv (
-  echo Membuat virtual environment (sekali saja)...
-  python -m venv .venv || (echo Python belum terpasang. Install dari https://www.python.org/downloads/ lalu centang "Add Python to PATH". & pause & exit /b 1)
+  echo First run: setting up (one time only, 1-2 minutes)...
+  python -m venv .venv || (echo Python is not installed. Get it from https://www.python.org/downloads/ and tick "Add Python to PATH". & pause & exit /b 1)
   .venv\Scripts\python -m pip install --upgrade pip
-  .venv\Scripts\python -m pip install -r requirements.txt
 )
+.venv\Scripts\python -m pip install -q -r requirements.txt
 .venv\Scripts\python run.py
 pause

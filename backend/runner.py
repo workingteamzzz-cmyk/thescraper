@@ -1,8 +1,8 @@
-"""Social Scraper — runner: port dari fungsi on_click() di notebook.
+"""Social Scraper — runner: port of the notebook's on_click() handler.
 
-Nilai form (dulu ipywidgets) sekarang datang dari dict `P` yang dikirim UI web.
-Alurnya sama persis: BY LINK / BY PROFILE / MIXED / keyword, filter, komentar,
-enrichment profil, impor, sentimen, lalu simpan Excel/CSV ke folder outputs/.
+Form values (formerly ipywidgets) now come from the dict `P` sent by the web UI.
+The flow is unchanged: BY LINK / BY PROFILE / MIXED / keyword, filters, comments,
+profile enrichment, import, sentiment, then Excel/CSV saved to the outputs/ folder.
 """
 import os
 
@@ -21,7 +21,7 @@ class _Label:
 
 
 class Progress:
-    """Pengganti widgets.IntProgress + Label: dibaca UI lewat polling."""
+    """Replaces widgets.IntProgress + Label; the UI reads it by polling."""
     def __init__(self):
         self.min = 0
         self.max = 1
@@ -39,7 +39,7 @@ DEFAULTS = {
     "strict": True, "lang": "", "neg_use": False, "neg_terms": "",
     "dedup": True, "coverage": False, "delta": False,
     "comments": False, "cmt_top": 20, "cmt_max": 30, "cmt_kw": False, "cmt_kw_txt": "",
-    "followers": False, "fill_id": True,
+    "followers": True, "fill_id": True,
     "tw_rt": True, "tw_rt_cap": 0, "tw_rt_total": 0, "tw_rt_link": False,
     "nlp": "ai", "import_text": "", "raw": False,
     "columns": None, "fmt": "Excel (.xlsx)",
@@ -70,7 +70,7 @@ def wib_epoch(dstr, tstr, is_end):
 
 
 def run_job(params, progress, result):
-    """Jalankan satu scraping. `result` diisi files/rows/preview saat selesai."""
+    """Run one scrape. `result` is filled with files/rows/preview when done."""
     P = dict(DEFAULTS)
     P.update({k: v for k, v in (params or {}).items() if k in DEFAULTS})
     for k in ("limit", "budget", "cmt_top", "cmt_max", "tw_rt_cap", "tw_rt_total"):
@@ -78,11 +78,10 @@ def run_job(params, progress, result):
             P[k] = int(P[k] or 0)
         except (TypeError, ValueError):
             P[k] = DEFAULTS[k]
-    if not P["columns"]:
-        P["columns"] = list(ALL_COLS)
+    P["columns"] = list(ALL_COLS)   # every output field is mandatory
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     if not core.API_KEY:
-        print("API key is empty. Isi SCRAPECREATORS_API_KEY di file .env atau di kolom API key pada UI."); return
+        print("API key is empty. Enter it in Step 1 (or set SCRAPECREATORS_API_KEY in the .env file)."); return
 
     _REQN["total"] = 0; _REQN["fase"] = {}; _REQN["twitter"] = 0; _REQN["other"] = 0
     TW_INC_RT["on"] = bool(P["tw_rt"])
@@ -96,7 +95,7 @@ def run_job(params, progress, result):
     NEG_KW["terms"] = ([w.strip() for w in (P["neg_terms"] or "").replace("\n", ",").split(",") if w.strip()]
                        if P["neg_use"] else [])
     BUDGET["max"] = max(0, int(P["budget"] or 0)); BUDGET["warned"] = False
-    CURPHASE["name"] = "cek saldo"
+    CURPHASE["name"] = "balance check"
     bal = check_credits()
     def _creditnum(b):
         if isinstance(b, dict):
@@ -114,15 +113,15 @@ def run_job(params, progress, result):
     prog_lbl = progress.label
     print("To stop early: press the ■ Stop button. Data collected so far is still saved.")
     ensure_drive()
-    print(f"\U0001F4BE Autosave berkala AKTIF: progres disimpan tiap ~50 baris ke {_checkpoint_path()}")
+    print(f"\U0001F4BE Autosave ON: progress is written every ~50 rows to {_checkpoint_path()}")
     try:
         import os as _os
         _cp = _checkpoint_path()
         if _os.path.exists(_cp) and _os.path.getsize(_cp) > 50:
             import pandas as _pd
             _prev_n = len(_pd.read_csv(_cp))
-            print(f"  \u2139\uFE0F Ditemukan checkpoint run sebelumnya ({_prev_n} baris) di {_cp}.")
-            print("     Jika run lalu terputus, data itu masih ada di file tsb. Impor via kotak 'Import file(s)' bila perlu.")
+            print(f"  \u2139\uFE0F Found a checkpoint from a previous run ({_prev_n} rows) at {_cp}.")
+            print("     If that run was interrupted, its data is still in that file. Add it via 'Import file(s)' if needed.")
     except Exception:
         pass
     _CKPT["last"] = 0
@@ -147,10 +146,10 @@ def run_job(params, progress, result):
         terms = [t.strip() for l in kw_lines for t in l.split(",") if t.strip()]
         STRICT_KW["terms"] = terms
         platforms = ALL_PLATFORMS if terms else []
-        print(f"\U0001F500 Mode CAMPUR terdeteksi: {len(terms)} keyword (semua platform), "
-              f"{len(mixed_post_urls)} link postingan, {len(mixed_profile_urls)} link profil.")
+        print(f"\U0001F500 MIXED mode: {len(terms)} keyword(s) (all platforms), "
+              f"{len(mixed_post_urls)} post link(s), {len(mixed_profile_urls)} profile link(s).")
         if not (terms or mixed_post_urls or mixed_profile_urls):
-            print("Masukkan minimal satu keyword atau URL."); return
+            print("Enter at least one keyword or URL."); return
     else:
         terms = [t.strip() for t in re.split(r"[\n,]+", P["queries"]) if t.strip()]
         STRICT_KW["terms"] = terms
@@ -169,14 +168,14 @@ def run_job(params, progress, result):
 
     if use_filter:
         if s_ep is None and u_ep is None:
-            print("\u274C Time filter DICENTANG tapi tanggal From/To belum terisi lengkap (Y, M, dan D wajib diisi).")
-            print("   Run DIBATALKAN supaya tidak boros kredit. Isi tanggalnya lalu klik Scrape lagi.")
+            print("\u274C Time filter is enabled but the From/To date is incomplete.")
+            print("   Run cancelled to avoid wasting credits. Set the dates and press Scrape again.")
             return
-        _fr = f"{since_str} {since_tstr or '00:00'}" if s_ep is not None else "(tanpa batas awal)"
-        _to = f"{until_str} {until_tstr or '00:00'}" if u_ep is not None else "(tanpa batas akhir)"
-        print(f"\u23F1\uFE0F Filter waktu AKTIF: {_fr} \u2192 {_to} WIB")
+        _fr = f"{since_str} {since_tstr or '00:00'}" if s_ep is not None else "(no start)"
+        _to = f"{until_str} {until_tstr or '00:00'}" if u_ep is not None else "(no end)"
+        print(f"\u23F1\uFE0F Time filter ON: {_fr} \u2192 {_to} WIB")
         if s_ep is None or u_ep is None:
-            print("   \u26A0\uFE0F Salah satu batas kosong/tidak valid \u2014 pastikan memang disengaja.")
+            print("   \u26A0\uFE0F One of the bounds is empty/invalid \u2014 make sure that is intended.")
 
     def _in_tf(r):
         """True kalau baris masuk rentang waktu (atau filter mati / benar-benar tanpa tanggal)."""
@@ -192,9 +191,9 @@ def run_job(params, progress, result):
     if use_filter and s_ep and u_ep:
         _range_days = max(1, round((u_ep - s_ep) / 86400))
         if _range_days <= 3 and int(P["limit"]) > 40:
-            print(f"\U0001F4A1 Rentang filter cuma {_range_days} hari tapi Max/query = {P["limit"]}.")
-            print("   Platform selain Twitter/Threads TIDAK bisa difilter di server \u2014 semua diambil dulu baru disaring (bayar penuh).")
-            print("   Saran: kecilkan Max/query jadi 20\u201330 untuk rentang pendek. Batas kredit/run tetap jadi rem pengaman.")
+            print(f"\U0001F4A1 The time range is only {_range_days} day(s) but Max/query = {P["limit"]}.")
+            print("   Platforms other than Twitter/Threads cannot be filtered server-side \u2014 results are fetched first, then filtered (full cost).")
+            print("   Tip: use Max/query 20\u201330 for short ranges. The credit cap still acts as a safety brake.")
 
     if platform == LINK_MODE:
         urls = [u.strip() for u in re.split(r"\s+", P["queries"]) if u.strip().lower().startswith("http")]
@@ -220,7 +219,7 @@ def run_job(params, progress, result):
             CURPHASE["name"] = "retweeters"
             tw_links = [u for u in urls if "twitter.com" in u or "x.com" in u]
             _rtc = TW_INC_RT.get("cap_per_orig", 0) or 100
-            print(f"\n\U0001F4B3 Retweeters: {len(tw_links)} tweet \u00d7 s/d {_rtc} akun (~{len(tw_links)}\u2013{len(tw_links)*(_rtc//25+1)} kredit).")
+            print(f"\n\U0001F4B3 Retweeters: {len(tw_links)} tweet(s) \u00d7 up to {_rtc} accounts (~{len(tw_links)}\u2013{len(tw_links)*(_rtc//25+1)} credits).")
             for tu in tw_links:
                 try:
                     allrows.extend(fetch_retweeters(tu, P["raw"], lambda m: print(m), cap=_rtc))
@@ -236,19 +235,19 @@ def run_job(params, progress, result):
         pages_est = max(1, -(-_mq // 20))   # ceil(mq/20): 5 atau 20 -> 1 halaman; 40 -> 2; 100 -> 5
         est_lo = len(purls) * pages_est
         print(f"{len(purls)} profile(s).")
-        print(f"\U0001F4B3 Estimasi: ~{est_lo} kredit = {len(purls)} profil \u00d7 {pages_est} halaman "
-              f"(Max/query={_mq} berlaku PER PROFIL; \u226420 = 1 halaman = ~1 kredit/profil).")
+        print(f"\U0001F4B3 Estimate: ~{est_lo} credits = {len(purls)} profile(s) \u00d7 {pages_est} page(s) "
+              f"(Max/query={_mq} applies PER PROFILE; \u226420 = 1 page = ~1 credit/profile).")
         if _mq <= 20:
-            print(f"  \u2705 Hemat: Max/query={_mq} \u2192 ~1 kredit per profil, total \u2248 {len(purls)} kredit.")
+            print(f"  \u2705 Economical: Max/query={_mq} \u2192 ~1 credit per profile, total \u2248 {len(purls)} credits.")
         elif _mq > 30 and len(purls) >= 10:
-            print(f"  \u26A0\uFE0F Max/query={_mq} \u00d7 {len(purls)} profil = boros. Turunkan ke 5\u201320 untuk hemat. "
-                  f"Filter waktu juga menghentikan pagination di luar rentang.")
+            print(f"  \u26A0\uFE0F Max/query={_mq} \u00d7 {len(purls)} profiles is expensive. Lower it to 5\u201320 to save credits. "
+                  f"The time filter also stops pagination outside the range.")
         if BUDGET["max"]:
             _avail = BUDGET["max"] - _REQN["other"]
             if est_lo > _avail:
                 _fit = max(1, _avail // pages_est)
-                print(f"  \U0001F6D1 Estimasi ({est_lo}) > sisa anggaran ({_avail}). Dibatasi ke {_fit} profil pertama "
-                      f"agar tidak jebol. Naikkan 'Credit cap/run' bila ingin semua {len(purls)}.")
+                print(f"  \U0001F6D1 Estimate ({est_lo}) > remaining budget ({_avail}). Limited to the first {_fit} profile(s) "
+                      f"to stay within the cap. Raise 'Credit cap/run' to process all {len(purls)}.")
                 purls = purls[:_fit]
         prog.max = max(1, len(purls)); prog.value = 0
         _stp = {"rows": 0}
@@ -274,7 +273,7 @@ def run_job(params, progress, result):
     else:
         allrows = []
         if mixed and mixed_post_urls:
-            print(f"\n--- Fase 1/3: BY LINK ({len(mixed_post_urls)} link, ~{len(mixed_post_urls)} kredit) ---")
+            print(f"\n--- Phase 1/3: BY LINK ({len(mixed_post_urls)} link(s), ~{len(mixed_post_urls)} credits) ---")
             _stl = {"n": 0}
             def _plink(done, total, res):
                 prog.max = total; prog.value = done
@@ -286,7 +285,7 @@ def run_job(params, progress, result):
                 CURPHASE["name"] = "retweeters"
                 tw_links = [u for u in mixed_post_urls if "twitter.com" in u or "x.com" in u]
                 _rtc = TW_INC_RT.get("cap_per_orig", 0) or 100
-                print(f"\n\U0001F4B3 Retweeters: {len(tw_links)} tweet \u00d7 s/d {_rtc} akun (~{len(tw_links)}\u2013{len(tw_links)*(_rtc//25+1)} kredit).")
+                print(f"\n\U0001F4B3 Retweeters: {len(tw_links)} tweet(s) \u00d7 up to {_rtc} accounts (~{len(tw_links)}\u2013{len(tw_links)*(_rtc//25+1)} credits).")
                 for tu in tw_links:
                     try:
                         allrows.extend(fetch_retweeters(tu, P["raw"], lambda m: print(m), cap=_rtc))
@@ -299,15 +298,15 @@ def run_job(params, progress, result):
                 _need = len(mixed_profile_urls) * pages_est
                 if _need > _avail:
                     _fit = max(1, _avail // pages_est)
-                    print(f"  \U0001F6D1 Profil dibatasi ke {_fit} (sisa anggaran {_avail}).")
+                    print(f"  \U0001F6D1 Profiles limited to {_fit} (remaining budget {_avail}).")
                     mixed_profile_urls = mixed_profile_urls[:_fit]
-            print(f"\n--- Fase 2/3: BY PROFILE ({len(mixed_profile_urls)} profil, ~{len(mixed_profile_urls) * pages_est} kredit) ---")
+            print(f"\n--- Phase 2/3: BY PROFILE ({len(mixed_profile_urls)} profile(s), ~{len(mixed_profile_urls) * pages_est} credits) ---")
             prog.max = max(1, len(mixed_profile_urls)); prog.value = 0
             _stp = {"rows": 0}
             def _pp(done, total, res):
                 prog.max = total; prog.value = done
                 if res: _stp["rows"] += len(res)
-                prog_lbl.value = f"[profil] {done}/{total} • {_stp['rows']} posts"
+                prog_lbl.value = f"[profile] {done}/{total} • {_stp['rows']} posts"
             CURPHASE["name"] = "by profile"
             results = parallel_map(lambda u: scrape_profile(u, int(P["limit"]), P["raw"], lambda m: print(m),
                                                             since_d=since_str if use_filter else "",
@@ -317,7 +316,7 @@ def run_job(params, progress, result):
             for lst in results:
                 allrows.extend(lst or [])
         if mixed and terms:
-            print(f"\n--- Fase 3/3: BY KEYWORD ({len(terms)} keyword \u00d7 semua platform) ---")
+            print(f"\n--- Phase 3/3: BY KEYWORD ({len(terms)} keyword(s) \u00d7 all platforms) ---")
     seen = set()
     def _expand_tasks():
         out = []
@@ -350,14 +349,14 @@ def run_job(params, progress, result):
     if P["comments"]:
         _tn = int(P["cmt_top"] or 20)
         _cmt = f" + comments ~{_tn if _tn > 0 else 'all posts \u00d7 pages'}"
-    print(f"\U0001F4B3 Estimasi: ~{_lo}\u2013{_hi} kredit{_cmt} ({len(tasks)} tugas cari). Angka pasti di akhir run.")
+    print(f"\U0001F4B3 Estimate: ~{_lo}\u2013{_hi} credits{_cmt} ({len(tasks)} search task(s)). Exact usage is shown at the end.")
     if BUDGET["max"] and _lo > (BUDGET["max"] - _REQN["other"]):
-        print(f"  \U0001F6D1 Estimasi minimum ({_lo}) sudah melebihi sisa anggaran ({BUDGET['max'] - _REQN['total']}).")
-        print(f"     Run akan berhenti otomatis di batas {BUDGET['max']} \u2014 sebagian keyword mungkin tak terproses.")
-        print(f"     Saran: kurangi keyword, atau naikkan 'Credit cap/run'.")
+        print(f"  \U0001F6D1 The minimum estimate ({_lo}) already exceeds the remaining budget ({BUDGET['max'] - _REQN['total']}).")
+        print(f"     The run will stop automatically at {BUDGET['max']} \u2014 some keywords may not be processed.")
+        print(f"     Tip: use fewer keywords, or raise 'Credit cap/run'.")
     elif _hi > 800:
-        print(f"  \u26A0\uFE0F Estimasi maksimum tinggi (~{_hi}). Untuk hemat: kecilkan Max/query, kurangi keyword,")
-        print(f"     matikan 'Max coverage', dan pastikan filter waktu (Last 24 hours) aktif.")
+        print(f"  \u26A0\uFE0F High maximum estimate (~{_hi}). To save credits: lower Max/query, use fewer keywords,")
+        print(f"     turn off 'Max coverage', and enable the time filter (e.g. Last 24 hours).")
     if tasks:
         prog.max = max(1, len(tasks)); prog.value = 0
     _stsearch = {"rows": 0}
@@ -376,9 +375,11 @@ def run_job(params, progress, result):
                           until_str if P["time_filter"] else "",
                           P["raw"], lambda m: buf.append(m),
                           s_ep=s_ep, u_ep=u_ep)
+        if core.STOP["flag"]:
+            return (plat, term, [], buf)
         try:
             rows = _go()
-            if not rows:
+            if not rows and not core.STOP["flag"]:
                 buf.append("  0 results \u2192 auto-retry once...")
                 time.sleep(3)
                 rows = _go()
@@ -421,12 +422,12 @@ def run_job(params, progress, result):
     if use_filter and _filtered_out["n"]:
         print(f"\n\u26A0\uFE0F Time filter removed {_filtered_out['n']} rows. If clips seem missing, widen or disable the time filter.")
     if STRICT_KW["on"] and _strict_out["n"]:
-        print(f"\U0001F3AF Strict keyword: {_strict_out['n']} baris dibuang (tak memuat frasa kata kunci utuh).")
+        print(f"\U0001F3AF Strict keyword: {_strict_out['n']} row(s) removed (did not contain the full phrase).")
     if LANG_FILTER["mode"] and _lang_out["n"]:
-        _lname = {"id": "Indonesia", "en": "Inggris"}.get(LANG_FILTER["mode"], LANG_FILTER["mode"])
-        print(f"\U0001F310 Filter bahasa: {_lang_out['n']} baris non-{_lname} dibuang (Thai/Arab/Mandarin/Turki/dll).")
+        _lname = {"id": "Indonesian", "en": "English"}.get(LANG_FILTER["mode"], LANG_FILTER["mode"])
+        print(f"\U0001F310 Language filter: {_lang_out['n']} non-{_lname} row(s) removed.")
     if NEG_KW["terms"] and _neg_out["n"]:
-        print(f"\U0001F6AB Negative keyword: {_neg_out['n']} baris noise dibuang (K-pop/motor/jualan/game/dll).")
+        print(f"\U0001F6AB Negative keywords: {_neg_out['n']} row(s) removed.")
 
     for r in allrows:
         r.setdefault("type", "post"); r.setdefault("parent_id", "")
@@ -434,7 +435,7 @@ def run_job(params, progress, result):
         _b = len(allrows)
         allrows = [r for r in allrows if _in_tf(r)]
         if _b - len(allrows):
-            print(f"\u23F1\uFE0F Time filter (semua mode): {_b - len(allrows)} baris di luar rentang dibuang.")
+            print(f"\u23F1\uFE0F Time filter: {_b - len(allrows)} row(s) outside the range removed.")
     _seenk, _uniq = set(), []
     for r in allrows:
         k = (r.get("platform"), r.get("type"),
@@ -443,7 +444,7 @@ def run_job(params, progress, result):
             continue
         _seenk.add(k); _uniq.append(r)
     if len(_uniq) < len(allrows):
-        print(f"\U0001F9F9 Dedup global: {len(allrows) - len(_uniq)} baris duplikat dibuang.")
+        print(f"\U0001F9F9 Dedup: {len(allrows) - len(_uniq)} duplicate row(s) removed.")
     allrows = _uniq
     if P["delta"] and allrows:
         prev = load_seen_ids()
@@ -468,23 +469,23 @@ def run_job(params, progress, result):
         if capn <= 0:
             pages_per_post = 8   # asumsi konservatif utk "semua komentar"
         est_credits = len(post_rows) * pages_per_post
-        cap_txt = "ALL comments (mahal!)" if capn <= 0 else f"max {capn} comments/post"
-        print(f"\n\U0001F4B3 Estimasi komentar: {len(post_rows)} post \u00d7 ~{pages_per_post} req = ~{est_credits} kredit ({cap_txt}).")
+        cap_txt = "ALL comments (expensive!)" if capn <= 0 else f"max {capn} comments/post"
+        print(f"\n\U0001F4B3 Comment estimate: {len(post_rows)} post(s) \u00d7 ~{pages_per_post} req = ~{est_credits} credits ({cap_txt}).")
         _cap_left = (BUDGET["max"] - _REQN["other"]) if BUDGET["max"] else 10**9
         if BUDGET["max"] and est_credits > _cap_left:
             # potong jumlah post agar muat dalam sisa anggaran
             _fit = max(0, _cap_left // max(1, pages_per_post))
             if _fit < len(post_rows):
-                print(f"  \u26A0\uFE0F Sisa anggaran kredit cuma {_cap_left} \u2014 komentar dibatasi ke {_fit} post teratas (dari {len(post_rows)}) agar tidak jebol.")
+                print(f"  \u26A0\uFE0F Only {_cap_left} credits left in the budget \u2014 comments limited to the top {_fit} of {len(post_rows)} post(s).")
                 post_rows = post_rows[:_fit]
                 est_credits = len(post_rows) * pages_per_post
         if capn <= 0 and len(post_rows) > 5:
-            print(f"  \u26A0\uFE0F 'Max cmts/post = 0' (semua komentar) sangat boros untuk {len(post_rows)} post. Sangat disarankan isi 30\u2013100.")
+            print(f"  \u26A0\uFE0F 'Max cmts/post = 0' (all comments) is very expensive for {len(post_rows)} posts. 30\u2013100 is recommended.")
         print(f"Fetching comments for {len(post_rows)} posts...")
         _tw_n = sum(1 for r in post_rows if r["platform"] == "Twitter")
         if _tw_n:
-            print(f"  (termasuk {_tw_n} tweet \u2014 reply diambil via pencarian conversation_id, \u00b11+ kredit Twitter/tweet)")
-        CURPHASE["name"] = "komentar/reply"
+            print(f"  (includes {_tw_n} tweet(s) \u2014 replies fetched via conversation_id search, ~1+ Twitter credit per tweet)")
+        CURPHASE["name"] = "comments/replies"
         clists = parallel_map(lambda r: (fetch_tw_replies(r.get("id"), P["raw"], lambda m: None, cap=capn)
                                          if r["platform"] == "Twitter"
                                          else fetch_comments(r["platform"], r["url"], r.get("id"), P["raw"], lambda m: None, cap=capn)),
@@ -495,7 +496,7 @@ def run_job(params, progress, result):
             if not kwfilter:
                 kwfilter = [t.lower() for t in terms if t]
             if not kwfilter:
-                print("  \u26A0\uFE0F Filter komentar aktif tapi tidak ada kata kunci (mode link/profil tanpa kata filter) \u2014 filter dilewati.")
+                print("  \u26A0\uFE0F Comment keyword filter is on but no filter words were given \u2014 filter skipped.")
         added, dropped_kw = 0, 0
         for cl in clists:
             if not cl:
@@ -507,7 +508,7 @@ def run_job(params, progress, result):
             cl = [c for c in cl if _in_tf(c)]
             allrows.extend(cl); added += len(cl)
         if kwfilter:
-            print(f"  +{added} komentar mengandung kata kunci ({dropped_kw} komentar lain dibuang)")
+            print(f"  +{added} comments containing the keywords ({dropped_kw} other comments removed)")
         else:
             print(f"  +{added} comment rows")
     if (P["followers"] or P["fill_id"]) and allrows:
@@ -524,12 +525,12 @@ def run_job(params, progress, result):
         if need:
             what = " + ".join([w for w, on in (("followers", P["followers"]),
                                                ("user id/image", P["fill_id"])) if on])
-            print(f"\n\U0001F50E Melengkapi profil ({what}) untuk {len(need)} akun unik \u2014 1 request/akun, digabung satu fase...")
-            CURPHASE["name"] = "profil enrichment"
+            print(f"\n\U0001F50E Enriching profiles ({what}) for {len(need)} unique account(s) \u2014 1 request per account...")
+            CURPHASE["name"] = "profile enrichment"
             prog.max = max(1, len(need)); prog.value = 0
             def _pprof(done, total, res):
                 prog.max = total; prog.value = done
-                prog_lbl.value = f"[profil] {done}/{total} akun"
+                prog_lbl.value = f"[profile] {done}/{total} accounts"
             vals = parallel_map(lambda pu: (pu, fetch_profile(pu[0], pu[1], lambda m: None)),
                                 need, workers=12, progress=_pprof)
             pmap = {pu: v for pu, v in vals if pu is not None and v}
@@ -604,9 +605,9 @@ def run_job(params, progress, result):
                         d["platform"] = _plat_from_url(d["url"])
                     d["query"] = "(imported)"; d["_imported"] = True
                     _imp_rows.append(d)
-                print(f"  \U0001F4E5 Impor {len(idf)} baris dari file {pth} (0 kredit)")
+                print(f"  \U0001F4E5 Imported {len(idf)} row(s) from {pth} (0 credits)")
             except Exception as e:
-                print(f"  \u26A0\uFE0F Gagal impor file {pth}: {type(e).__name__}: {str(e)[:60]}")
+                print(f"  \u26A0\uFE0F Failed to import {pth}: {type(e).__name__}: {str(e)[:60]}")
 
         # 2) Data mentah yang ditempel langsung: bulk link, opsional diikuti teks
         #    Format tiap baris: <url>   atau   <url><TAB atau ; atau ,><teks bebas>
@@ -621,11 +622,11 @@ def run_job(params, progress, result):
                  "type": "post", "query": "(imported)", "_imported": True}
             _imp_rows.append(d)
         if _raw:
-            print(f"  \U0001F4CE {len(_raw)} baris data tempel langsung (bulk link) diterima \u2014 TANPA crawling, 0 kredit")
+            print(f"  \U0001F4CE {len(_raw)} pasted row(s) accepted \u2014 no crawling, 0 credits")
 
         if _imp_rows:
             allrows.extend(_imp_rows)
-            print(f"  \u2705 {len(_imp_rows)} baris impor digabung untuk dianalisis & diformat.")
+            print(f"  \u2705 {len(_imp_rows)} imported row(s) merged for analysis.")
     if not allrows:
         prog.bar_style = "warning"; print("\nNo results and no imported rows."); return
     prog.bar_style = "success"; prog.value = prog.max
@@ -640,7 +641,7 @@ def run_job(params, progress, result):
         extras = [c for c in df.columns if c not in ALL_COLS]
         df = df[[c for c in ALL_COLS if c in chosen] + extras]
     # Sentiment (NLP) + Emotion (Plutchik) + layout mengikuti Sample_Crawling
-    print(f"\n\U0001F9E0 Analisis Sentimen & Emosi: {'model AI (hybrid + leksikon)' if NLP_MODE['mode'] == 'ai' else 'leksikon'} \u2014 lokal, tanpa kredit API...")
+    print(f"\n\U0001F9E0 Sentiment & emotion analysis: {'AI model (hybrid with lexicon)' if NLP_MODE['mode'] == 'ai' else 'lexicon'} \u2014 runs locally, no API credits...")
     df = to_sample_layout(df)
     if until_str and P["time_filter"]:
         label = until_str + " " + (until_tstr or "23.59")
@@ -684,9 +685,9 @@ def run_job(params, progress, result):
             pass
         try:
             add_rekap_codebook(xp, df)
-            print("   \U0001F4D1 Sheet 'Rekap' + 'Codebook' ditambahkan ke Excel.")
+            print("   \U0001F4D1 'Summary' and 'Codebook' sheets added.")
         except Exception as e:
-            print(f"   (Rekap dilewati: {type(e).__name__})")
+            print(f"   (Summary sheet skipped: {type(e).__name__})")
         saved.append(xp)
     if "CSV" in P["fmt"]:
         cp = os.path.join(OUTPUT_DIR, base + ".csv")
@@ -697,11 +698,11 @@ def run_job(params, progress, result):
         print("   Per platform: " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
     except Exception:
         pass
-    CURPHASE["name"] = "cek saldo"
+    CURPHASE["name"] = "balance check"
     print_usage_breakdown()
     end_credits = _creditnum(check_credits())
     if start_credits is not None and end_credits is not None:
-        print(f"   \U0001F4B0 Kredit terpakai run ini: {start_credits - end_credits:,} \u2022 sisa: {end_credits:,}")
+        print(f"   \U0001F4B0 Credits used this run: {start_credits - end_credits:,} \u2022 remaining: {end_credits:,}")
     result["files"] = [os.path.basename(f) for f in saved]
     result["rows"] = len(df)
     try:
@@ -709,4 +710,4 @@ def run_job(params, progress, result):
         result["preview"] = _json.loads(df.head(30).to_json(orient="values", force_ascii=False, date_format="iso"))
     except Exception:
         pass
-    print(f"\U0001F4C1 File tersimpan di folder: {OUTPUT_DIR}")
+    print(f"\U0001F4C1 Saved to folder: {OUTPUT_DIR}")

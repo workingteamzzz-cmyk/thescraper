@@ -1,289 +1,292 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Social Scraper</title>
 <style>
   :root {
-    --bg: #f5f6f8; --card: #ffffff; --text: #1d2330; --muted: #667085; --border: #dde1e7;
-    --accent: #3b5bdb; --accent-text: #ffffff; --ok: #2b8a3e; --warn: #e67700; --bad: #c92a2a;
-    --log-bg: #11151c; --log-text: #d7dde8; --input: #ffffff;
+    --bg: #f4f4f2; --panel: #ffffff; --text: #222; --muted: #6b6b6b; --line: #d9d9d6;
+    --accent: #1f5fa8; --ok: #2d7a3a; --warn: #b26a00; --bad: #b3261e; --input: #fff;
+    --log-bg: #fbfbfa; --log-text: #2b2b2b;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #12151b; --card: #1b2029; --text: #e4e7ec; --muted: #98a2b3; --border: #2c3340;
-      --accent: #5c7cfa; --accent-text: #ffffff; --ok: #51cf66; --warn: #ffa94d; --bad: #ff6b6b;
-      --log-bg: #0b0e13; --log-text: #d7dde8; --input: #141820;
+      --bg: #1c1c1c; --panel: #252525; --text: #e6e6e6; --muted: #a0a0a0; --line: #3a3a3a;
+      --accent: #6fa3e0; --ok: #6cc27a; --warn: #e0a24a; --bad: #ef7b73; --input: #1e1e1e;
+      --log-bg: #1a1a1a; --log-text: #dcdcdc;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { padding: 18px 16px 6px; max-width: 1100px; margin: 0 auto; }
-  header h1 { margin: 0; font-size: 22px; }
-  header p { margin: 4px 0 0; color: var(--muted); }
-  main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 40px; display: grid; gap: 14px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-  .card h2 { margin: 0 0 4px; font-size: 15px; }
-  .hint { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
-  .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 8px 0; }
-  label.f { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--muted); }
-  label.c { display: flex; gap: 7px; align-items: flex-start; cursor: pointer; }
+         font: 14px/1.45 "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px 48px; }
+  .top { border-bottom: 1px solid var(--line); background: var(--panel); }
+  .top .wrap { padding-top: 14px; padding-bottom: 12px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .top h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .top span { color: var(--muted); font-size: 13px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; margin-top: 14px; }
+  section > h2 { font-size: 14px; margin: 0; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 2px 0 10px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 7px 0; }
+  .lbl { display: inline-block; min-width: 150px; color: var(--muted); }
+  label.cb { display: flex; align-items: flex-start; gap: 7px; margin: 5px 0; cursor: pointer; }
+  label.cb input { margin-top: 3px; }
   input[type=text], input[type=password], input[type=number], input[type=date], input[type=time], select, textarea {
-    background: var(--input); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
-    padding: 6px 8px; font: inherit; max-width: 100%; }
+    font: inherit; color: var(--text); background: var(--input); border: 1px solid var(--line);
+    border-radius: 3px; padding: 5px 7px; max-width: 100%; }
+  input[type=number] { width: 100px; }
   textarea { width: 100%; resize: vertical; }
-  input[type=number] { width: 110px; }
-  button { font: inherit; border-radius: 6px; border: 1px solid var(--border); background: var(--card);
-           color: var(--text); padding: 6px 12px; cursor: pointer; }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; padding: 8px 22px; }
-  button.danger { color: var(--bad); border-color: var(--bad); }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  .grid-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 10px; }
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  @media (max-width: 760px) { .two { grid-template-columns: 1fr; } }
-  details > summary { cursor: pointer; font-weight: 600; margin: 6px 0; }
-  .sub { border-left: 3px solid var(--border); padding-left: 12px; margin: 6px 0 10px; }
-  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
-  .bar { height: 12px; background: var(--border); border-radius: 6px; overflow: hidden; flex: 1; min-width: 160px; }
+  .grow { flex: 1 1 260px; }
+  button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line);
+           border-radius: 3px; padding: 5px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 7px 26px; }
+  .group { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+  .group:first-of-type { border-top: 0; margin-top: 4px; padding-top: 0; }
+  .group h3 { font-size: 13px; margin: 0 0 4px; font-weight: 600; }
+  .indent { margin-left: 24px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); } .muted { color: var(--muted); }
+  .bar { flex: 1 1 220px; height: 10px; border: 1px solid var(--line); border-radius: 2px; background: var(--bg); overflow: hidden; }
   .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
   .bar.success > div { background: var(--ok); } .bar.warning > div { background: var(--warn); } .bar.danger > div { background: var(--bad); }
-  pre#log { background: var(--log-bg); color: var(--log-text); padding: 10px 12px; border-radius: 8px;
-            height: 340px; overflow: auto; margin: 10px 0 0; font: 12.5px/1.45 ui-monospace, Consolas, monospace; white-space: pre-wrap; }
-  .tbl { overflow: auto; max-height: 420px; border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; }
-  table { border-collapse: collapse; font-size: 12.5px; width: max-content; min-width: 100%; }
-  th, td { border-bottom: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; max-width: 380px; }
-  th { position: sticky; top: 0; background: var(--card); }
-  ul.files { list-style: none; padding: 0; margin: 0; }
-  ul.files li { display: flex; gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  ul.files li a { color: var(--accent); font-weight: 600; word-break: break-all; }
-  .muted { color: var(--muted); }
-  .pill { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--border); font-size: 12px; }
+  #log { background: var(--log-bg); color: var(--log-text); border: 1px solid var(--line); border-radius: 3px;
+         height: 320px; overflow: auto; margin: 10px 0 0; padding: 8px 10px; white-space: pre-wrap;
+         font: 12.5px/1.45 Consolas, "Courier New", monospace; }
+  .tbl { overflow: auto; max-height: 380px; border: 1px solid var(--line); margin-top: 8px; }
+  table { border-collapse: collapse; font-size: 12.5px; min-width: 100%; }
+  th, td { border-bottom: 1px solid var(--line); padding: 3px 7px; text-align: left; vertical-align: top; white-space: nowrap; max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+  th { position: sticky; top: 0; background: var(--panel); font-weight: 600; }
+  #files { margin: 0; padding: 0; list-style: none; }
+  #files li { display: flex; gap: 10px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  #files li:last-child { border-bottom: 0; }
+  #files a { color: var(--accent); word-break: break-all; }
+  #files button { margin-left: auto; font-size: 12px; padding: 1px 8px; }
+  code { font-size: 12.5px; }
+  .fields { font-size: 12.5px; color: var(--muted); }
 </style>
 </head>
 <body>
-<header>
-  <h1>🔎 Social Scraper <span class="pill">lokal</span></h1>
-  <p>TikTok / YouTube / Threads / Instagram / Facebook / Twitter → Excel siap analisis. Berjalan di laptop sendiri — tanpa Colab, tanpa timeout.</p>
-</header>
+<div class="top"><div class="wrap">
+  <h1>Social Scraper</h1>
+  <span>TikTok / YouTube / Threads / Instagram / Facebook / Twitter &rarr; Excel</span>
+</div></div>
 
-<main>
-  <!-- API key -->
-  <section class="card">
-    <h2>🔐 API key</h2>
-    <p class="hint">Disimpan di file <code>.env</code> di laptop ini (tidak dikirim ke mana pun selain penyedia API). Kosongkan kolom bila tidak ingin mengganti.</p>
+<div class="wrap">
+
+<section>
+  <h2>Step 1 &mdash; Access</h2>
+  <p class="hint">API keys are stored only in the <code>.env</code> file on this computer. Leave a box empty to keep the saved key.</p>
+  <div class="row">
+    <span class="lbl">API key</span>
+    <input type="password" id="apiKey" size="36" autocomplete="off" placeholder="ScrapeCreators API key">
+    <span id="keyState" class="muted"></span>
+  </div>
+  <div class="row">
+    <span class="lbl">Twitter API key (optional)</span>
+    <input type="password" id="twKey" size="36" autocomplete="off" placeholder="enables Twitter search and Twitter links">
+    <span id="twState" class="muted"></span>
+  </div>
+  <div class="row">
+    <span class="lbl"></span>
+    <button id="saveKeys">Save keys</button>
+    <button id="checkCredits">Check credit balance</button>
+    <span id="creditOut" class="muted"></span>
+  </div>
+</section>
+
+<section>
+  <h2>Step 2 &mdash; Pick a scenario (fastest way)</h2>
+  <p class="hint">Pick a scenario and everything is configured automatically (mode, limits, time range, credit cap). Or choose &ldquo;(manual setup)&rdquo; to configure yourself.</p>
+  <div class="row">
+    <span class="lbl">Scenario</span>
+    <select id="scenario" class="grow"></select>
+  </div>
+  <div id="scenarioInfo" class="ok" style="font-size:12.5px"></div>
+</section>
+
+<section>
+  <h2>Step 3 &mdash; What to scrape</h2>
+  <p class="hint">Modes: keyword search (per platform / ALL), BY LINK (paste post URLs), BY PROFILE (paste profile URLs), or MIXED (mix them; auto-detected per line). Type keywords / paste links below &mdash; one per line.</p>
+  <div class="row">
+    <span class="lbl">Platform</span>
+    <select id="mode" data-k="mode" class="grow"></select>
+  </div>
+  <div class="row" style="align-items:flex-start">
+    <span class="lbl">Search</span>
+    <textarea data-k="queries" rows="5" class="grow" placeholder="keywords/hashtags (per line/comma) — mix post &amp; profile URLs in MIXED mode"></textarea>
+  </div>
+  <div class="row">
+    <span class="lbl">Max/query</span>
+    <input type="number" data-k="limit" min="1">
+  </div>
+</section>
+
+<section>
+  <h2>Step 4 &mdash; Output</h2>
+  <p class="hint">Every field is always included. Files are saved to the output folder on this computer and can be downloaded below.</p>
+  <div class="row">
+    <span class="lbl">Format</span>
+    <select data-k="fmt"><option>Excel (.xlsx)</option><option>CSV</option><option>Excel + CSV</option></select>
+  </div>
+  <div class="fields">Columns: No, Sentiment, Username, User ID, Follower, Text, Date, Time, Likes, Reply, Shares, Url, Emotion,
+    User Image, Platform, Sub Type, Views Count, Gender, Age Category, Content Location, Religion, Ethnic, Phsychography,
+    Parent ID, ID, User ID Parent, Query &mdash; plus &ldquo;Summary&rdquo; and &ldquo;Codebook&rdquo; sheets.</div>
+</section>
+
+<section>
+  <h2>Step 5 &mdash; Options (all optional)</h2>
+  <p class="hint">Credit cap &bull; WIB time filter &bull; comments &bull; AI analysis. Defaults are safe for daily use.</p>
+
+  <div class="group">
     <div class="row">
-      <label class="f">ScrapeCreators API key <span id="keyState" class="muted"></span>
-        <input type="password" id="apiKey" size="34" autocomplete="off" placeholder="paste API key"></label>
-      <label class="f">Twitter API key (opsional, getxapi) <span id="twState" class="muted"></span>
-        <input type="password" id="twKey" size="34" autocomplete="off" placeholder="paste Twitter key"></label>
-      <button id="saveKeys">Simpan</button>
-      <button id="checkCredits">💰 Cek saldo</button>
-      <span id="creditOut" class="muted"></span>
+      <span class="lbl">Credit cap/run (non-Twitter, 0=unlimited)</span>
+      <input type="number" data-k="budget" min="0">
     </div>
-  </section>
-
-  <!-- Scenario -->
-  <section class="card">
-    <h2>🚀 Skenario (cara tercepat)</h2>
-    <p class="hint">Pilih skenario → mode, limit, rentang waktu & batas kredit terisi otomatis. Semua tetap bisa diubah manual.</p>
-    <div class="row">
-      <select id="scenario" style="min-width:min(520px,100%)"></select>
-      <span id="scenarioInfo" class="ok" style="font-size:12.5px"></span>
-    </div>
-  </section>
-
-  <!-- What -->
-  <section class="card">
-    <h2>🔎 Apa yang di-scrape</h2>
-    <p class="hint">Mode: keyword (per platform / ALL), BY LINK (URL postingan), BY PROFILE (URL profil), atau MIXED (campur; auto-detect per baris). Satu per baris atau pisahkan dengan koma.</p>
-    <div class="row">
-      <label class="f">Mode / Platform <select id="mode" data-k="mode"></select></label>
-      <label class="f">Max/query <input type="number" id="limit" data-k="limit" min="1"></label>
-      <label class="f">Batas kredit/run (non-Twitter, 0 = tanpa batas) <input type="number" id="budget" data-k="budget" min="0"></label>
-    </div>
-    <textarea id="queries" data-k="queries" rows="5" placeholder="keyword / hashtag (per baris atau koma) — mode MIXED: campur URL postingan & profil"></textarea>
-  </section>
-
-  <div class="two">
-    <!-- Time filter -->
-    <section class="card">
-      <h2>⏱️ Filter waktu (WIB)</h2>
-      <label class="c"><input type="checkbox" data-k="time_filter" id="time_filter"> Aktifkan filter waktu</label>
-      <div class="row">
-        <span class="muted">Cepat:</span>
-        <button data-range="1">24 jam terakhir</button>
-        <button data-range="3">3 hari</button>
-        <button data-range="7">7 hari</button>
-      </div>
-      <div class="row">
-        <label class="f">Dari tanggal <input type="date" id="since_date" data-k="since_date"></label>
-        <label class="f">jam <input type="time" id="since_time" data-k="since_time"></label>
-      </div>
-      <div class="row">
-        <label class="f">Sampai tanggal <input type="date" id="until_date" data-k="until_date"></label>
-        <label class="f">jam <input type="time" id="until_time" data-k="until_time"></label>
-      </div>
-    </section>
-
-    <!-- Output -->
-    <section class="card">
-      <h2>📄 Output</h2>
-      <div class="row">
-        <label class="f">Preset kolom <select id="preset"></select></label>
-        <label class="f">Format <select id="fmt" data-k="fmt">
-          <option>Excel (.xlsx)</option><option>CSV</option><option>Excel + CSV</option></select></label>
-      </div>
-      <div class="grid-cols" id="cols"></div>
-      <label class="f" style="margin-top:10px">Analisis sentimen & emosi
-        <select id="nlp" data-k="nlp">
-          <option value="ai">Model AI — paling akurat (gratis, unduh ±2 GB sekali)</option>
-          <option value="lexicon">Leksikon — instan, tanpa unduhan</option>
-        </select></label>
-    </section>
   </div>
 
-  <!-- Options -->
-  <section class="card">
-    <h2>⚙️ Opsi lanjutan (semua opsional)</h2>
-    <details open>
-      <summary>Filter & dedup</summary>
-      <div class="sub">
-        <label class="c"><input type="checkbox" data-k="strict"> Strict keyword match (frasa utuh saja)</label>
-        <div class="row"><label class="f">Filter bahasa (semua platform)
-          <select data-k="lang"><option value="">Semua bahasa</option><option value="id">Indonesia saja</option><option value="en">Inggris saja</option></select></label></div>
-        <label class="c"><input type="checkbox" data-k="neg_use"> Aktifkan negative keyword (buang postingan yang memuat kata di bawah)</label>
-        <textarea data-k="neg_terms" rows="2" placeholder="kata yang ingin dibuang, pisahkan koma"></textarea>
-        <label class="c"><input type="checkbox" data-k="dedup"> Gabungkan link duplikat (1 baris per link unik)</label>
-        <label class="c"><input type="checkbox" data-k="coverage"> Max coverage / anti-klip-terlewat (lebih banyak kredit)</label>
-        <label class="c"><input type="checkbox" data-k="delta"> Hanya baris BARU (lewati hasil dari run sebelumnya)</label>
-      </div>
-    </details>
-    <details>
-      <summary>Komentar</summary>
-      <div class="sub">
-        <label class="c"><input type="checkbox" data-k="comments"> Ambil juga komentar (kredit tambahan)</label>
-        <div class="row">
-          <label class="f">Top-N post (0 = semua) <input type="number" data-k="cmt_top" min="0"></label>
-          <label class="f">Maks komentar/post (0 = semua) <input type="number" data-k="cmt_max" min="0"></label>
-        </div>
-        <label class="c"><input type="checkbox" data-k="cmt_kw"> Hemat: simpan hanya komentar yang memuat kata kunci</label>
-        <input type="text" data-k="cmt_kw_txt" style="width:100%" placeholder="kata filter, pisahkan koma (kosong = pakai keyword pencarian)">
-      </div>
-    </details>
-    <details>
-      <summary>Profil</summary>
-      <div class="sub">
-        <label class="c"><input type="checkbox" data-k="followers"> Isi jumlah follower via profil (kredit tambahan)</label>
-        <label class="c"><input type="checkbox" data-k="fill_id"> Wajib User ID & User Image (isi dari profil bila kosong — kredit tambahan)</label>
-      </div>
-    </details>
-    <details>
-      <summary>Twitter</summary>
-      <div class="sub">
-        <label class="c"><input type="checkbox" data-k="tw_rt"> Sertakan retweet di hasil pencarian Twitter</label>
-        <div class="row">
-          <label class="f">Maks RT per tweet asli (0 = tanpa batas) <input type="number" data-k="tw_rt_cap" min="0"></label>
-          <label class="f">Maks total retweet (0 = tanpa batas) <input type="number" data-k="tw_rt_total" min="0"></label>
-        </div>
-        <label class="c"><input type="checkbox" data-k="tw_rt_link"> BY LINK: ambil juga daftar retweeter dari postingan Twitter</label>
-      </div>
-    </details>
-    <details>
-      <summary>Impor data yang sudah dimiliki (0 kredit)</summary>
-      <div class="sub">
-        <p class="hint">Satu per baris: link mentah, <code>link&lt;TAB&gt;teks</code>, atau path file .xlsx/.csv. Digabung & dianalisis apa adanya.</p>
-        <textarea data-k="import_text" id="import_text" rows="3"></textarea>
-        <div class="row"><input type="file" id="importFile" accept=".xlsx,.xls,.csv" multiple> <span id="uploadOut" class="muted"></span></div>
-      </div>
-    </details>
-    <details>
-      <summary>Debug</summary>
-      <div class="sub"><label class="c"><input type="checkbox" data-k="raw"> Sertakan kolom raw JSON</label></div>
-    </details>
-  </section>
-
-  <!-- Run -->
-  <section class="card">
-    <h2>▶ Jalankan</h2>
-    <div class="row">
-      <button class="primary" id="runBtn">Scrape</button>
-      <button class="danger" id="stopBtn" disabled>■ Stop</button>
-      <div class="bar" id="bar"><div></div></div>
-      <span id="progLbl" class="muted"></span>
+  <div class="group">
+    <h3>Time filter</h3>
+    <label class="cb"><input type="checkbox" data-k="time_filter"> Enable time filter (WIB)</label>
+    <div class="row indent">
+      <span>Quick range:</span>
+      <button data-range="1">Last 24 hours</button>
+      <button data-range="3">Last 3 days</button>
+      <button data-range="7">Last 7 days</button>
     </div>
-    <pre id="log">Siap. Isi form lalu tekan Scrape.</pre>
-    <div id="resultBox"></div>
-  </section>
+    <div class="row indent">
+      <span style="min-width:40px">From</span>
+      <input type="date" data-k="since_date"> <input type="time" data-k="since_time">
+    </div>
+    <div class="row indent">
+      <span style="min-width:40px">To</span>
+      <input type="date" data-k="until_date"> <input type="time" data-k="until_time">
+    </div>
+  </div>
 
-  <!-- Files -->
-  <section class="card">
-    <h2>📁 Hasil tersimpan <button id="refreshFiles" style="margin-left:8px;font-size:12px;padding:2px 8px">refresh</button></h2>
-    <p class="hint" id="outDir"></p>
-    <ul class="files" id="files"></ul>
-  </section>
-</main>
+  <div class="group">
+    <h3>Filtering</h3>
+    <label class="cb"><input type="checkbox" data-k="strict"> Strict keyword match (whole phrase only)</label>
+    <div class="row">
+      <span class="lbl">Language filter (all platforms)</span>
+      <select data-k="lang"><option value="">Any / all languages</option><option value="id">Indonesian only</option><option value="en">English only</option></select>
+    </div>
+    <label class="cb"><input type="checkbox" data-k="neg_use"> Enable negative keyword filter (uses the box below)</label>
+    <textarea data-k="neg_terms" rows="2" placeholder="Negative keywords (exclude) — words that, if present in a post, drop that row (comma-separated). Empty = no exclusion."></textarea>
+    <label class="cb"><input type="checkbox" data-k="dedup"> Merge duplicate links (1 row per unique link)</label>
+    <label class="cb"><input type="checkbox" data-k="coverage"> Max coverage / anti-missed-clip (more credits)</label>
+    <label class="cb"><input type="checkbox" data-k="delta"> Only NEW rows (skip results from previous runs)</label>
+  </div>
+
+  <div class="group">
+    <h3>Comments</h3>
+    <label class="cb"><input type="checkbox" data-k="comments"> Also scrape comments (extra credits)</label>
+    <div class="row indent">
+      <span>Top-N posts (0=all)</span> <input type="number" data-k="cmt_top" min="0">
+      <span>Max cmts/post (0=all)</span> <input type="number" data-k="cmt_max" min="0">
+    </div>
+    <div class="row indent">
+      <label class="cb" style="margin:0"><input type="checkbox" data-k="cmt_kw"> Saver: only keep comments containing keywords</label>
+      <input type="text" data-k="cmt_kw_txt" class="grow" placeholder="filter words, comma-separated (empty = use search keywords)">
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Profiles</h3>
+    <label class="cb"><input type="checkbox" data-k="followers"> Fill followers via profile (extra credits)</label>
+    <label class="cb"><input type="checkbox" data-k="fill_id"> Require User ID &amp; User Image (fill from profile if missing &mdash; extra credits)</label>
+  </div>
+
+  <div class="group">
+    <h3>Twitter</h3>
+    <label class="cb"><input type="checkbox" data-k="tw_rt"> Include retweets in Twitter search results</label>
+    <div class="row indent">
+      <span>Max RT per original tweet (0=no limit)</span> <input type="number" data-k="tw_rt_cap" min="0">
+      <span>Max total retweets (0=no limit)</span> <input type="number" data-k="tw_rt_total" min="0">
+    </div>
+    <label class="cb"><input type="checkbox" data-k="tw_rt_link"> BY LINK: also pull retweeters of Twitter posts</label>
+  </div>
+
+  <div class="group">
+    <h3>Analysis</h3>
+    <div class="row">
+      <span class="lbl">Analysis</span>
+      <select data-k="nlp">
+        <option value="ai">AI model &mdash; most accurate (free, 1-3 min first load)</option>
+        <option value="lexicon">Lexicon &mdash; instant, no download</option>
+      </select>
+      <span id="aiState" class="muted" style="font-size:12.5px"></span>
+    </div>
+  </div>
+
+  <div class="group">
+    <h3>Import file(s)</h3>
+    <textarea data-k="import_text" id="import_text" rows="3" placeholder="OPTIONAL — data you ALREADY have (no crawling, 0 credits). Paste one per line: a raw link, or link<TAB>text, or an .xlsx/.csv path. These are merged & analyzed as-is."></textarea>
+    <div class="row"><input type="file" id="importFile" accept=".xlsx,.xls,.csv" multiple> <span id="uploadOut" class="muted"></span></div>
+    <label class="cb"><input type="checkbox" data-k="raw"> Include raw column (debug)</label>
+  </div>
+</section>
+
+<section>
+  <h2>Step 6 &mdash; Run</h2>
+  <p class="hint">Press Scrape. Progress shows live; the Stop button works anytime &mdash; collected data is still saved. You can close this tab; the scrape keeps running while the server window is open.</p>
+  <div class="row">
+    <button class="primary" id="runBtn">Scrape</button>
+    <button id="stopBtn" disabled>Stop</button>
+    <div class="bar" id="bar"><div></div></div>
+  </div>
+  <div id="progLbl" class="muted" style="font-size:12.5px"></div>
+  <div id="log">Ready.</div>
+  <div id="resultBox"></div>
+</section>
+
+<section>
+  <h2>Saved files</h2>
+  <p class="hint" id="outDir"></p>
+  <ul id="files"></ul>
+</section>
+
+</div>
 
 <script>
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
-const STORE = "socialScraperForm.v1";
-let CFG = null, cursor = 0, polling = null;
-
-const PRESETS = {
-  "All fields": null,
-  "Followers only": ["platform", "username", "followers"],
-  "Likes only": ["platform", "username", "likes"],
-  "Publish time only": ["platform", "username", "date", "time"],
-  "User ID only": ["platform", "username", "user_id"],
-  "Profile image only": ["platform", "username", "profile_image"],
-  "Engagement only": ["platform", "username", "likes", "comments", "shares", "views"],
-};
+const STORE = "socialScraperForm.v2";
+let CFG = null, cursor = 0, polling = null, failures = 0;
 
 function scenarios() {
   return {
     "(manual setup)": null,
-    "📅 Monitoring harian — semua platform, 24 jam terakhir": { mode: "ALL platforms", limit: 25, budget: 150, rng: 1, comments: false },
-    "📈 Monitoring mingguan — semua platform, 7 hari terakhir": { mode: "ALL platforms", limit: 40, budget: 300, rng: 7, comments: false },
-    "💬 Analisis post + komentar — tempel link postingan": { mode: CFG.link_mode, limit: 30, budget: 200, rng: null, comments: true },
-    "👤 Riset akun — tempel link profil, 7 hari terakhir": { mode: CFG.profile_mode, limit: 50, budget: 200, rng: 7, comments: false },
-    "🪙 Tes murah — hasil sedikit, kredit minimal": { mode: "ALL platforms", limit: 10, budget: 50, rng: 3, comments: false },
+    "Daily monitoring — all platforms, last 24 hours": { mode: "ALL platforms", limit: 25, budget: 150, rng: 1, comments: false },
+    "Weekly monitoring — all platforms, last 7 days": { mode: "ALL platforms", limit: 40, budget: 300, rng: 7, comments: false },
+    "Post + comments analysis — paste post links": { mode: CFG.link_mode, limit: 30, budget: 200, rng: null, comments: true },
+    "Account research — paste profile links, last 7 days": { mode: CFG.profile_mode, limit: 50, budget: 200, rng: 7, comments: false },
+    "Cheap test run — small results, minimal credits": { mode: "ALL platforms", limit: 10, budget: 50, rng: 3, comments: false },
   };
 }
 
-function field(k) { return $(`[data-k="${k}"]`); }
-function getVal(el) { return el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value || 0) : el.value); }
+const field = k => $(`[data-k="${k}"]`);
+const getVal = el => el.type === "checkbox" ? el.checked : (el.type === "number" ? Number(el.value || 0) : el.value);
 function setVal(el, v) { if (!el) return; if (el.type === "checkbox") el.checked = !!v; else el.value = v ?? ""; }
-
-function collect() {
-  const p = {};
-  $$("[data-k]").forEach(el => p[el.dataset.k] = getVal(el));
-  p.columns = $$("#cols input:checked").map(i => i.value);
-  return p;
-}
-function save() { try { localStorage.setItem(STORE, JSON.stringify({ ...collect(), _scenario: $("#scenario").value, _preset: $("#preset").value })); } catch (e) {} }
+function collect() { const p = {}; $$("[data-k]").forEach(el => p[el.dataset.k] = getVal(el)); return p; }
+function save() { try { localStorage.setItem(STORE, JSON.stringify({ ...collect(), _scenario: $("#scenario").value })); } catch (e) {} }
 function load(defaults) {
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) {}
   const v = { ...defaults, ...saved };
   $$("[data-k]").forEach(el => setVal(el, v[el.dataset.k]));
-  const cols = new Set(v.columns || CFG.columns);
-  $$("#cols input").forEach(i => i.checked = cols.has(i.value));
-  if (saved._preset) $("#preset").value = saved._preset;
+  if (saved._scenario) $("#scenario").value = saved._scenario;
 }
 
-// WIB = UTC+7, terlepas dari zona waktu laptop
-function wibParts(d) {
-  const t = new Date(d.getTime() + 7 * 3600e3);
-  const pad = n => String(n).padStart(2, "0");
-  return { date: `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`,
-           time: `${pad(t.getUTCHours())}:${pad(Math.floor(t.getUTCMinutes() / 5) * 5)}` };
+// WIB = UTC+7 regardless of the laptop's time zone
+function wib(d) {
+  const t = new Date(d.getTime() + 7 * 3600e3), p = n => String(n).padStart(2, "0");
+  return { date: `${t.getUTCFullYear()}-${p(t.getUTCMonth() + 1)}-${p(t.getUTCDate())}`,
+           time: `${p(t.getUTCHours())}:${p(Math.floor(t.getUTCMinutes() / 5) * 5)}` };
 }
 function applyRange(days) {
-  const now = new Date(), start = new Date(now.getTime() - days * 86400e3);
-  const a = wibParts(start), b = wibParts(now);
+  const now = new Date(), a = wib(new Date(now.getTime() - days * 86400e3)), b = wib(now);
   setVal(field("since_date"), a.date); setVal(field("since_time"), a.time);
   setVal(field("until_date"), b.date); setVal(field("until_time"), b.time);
   setVal(field("time_filter"), true); save();
@@ -297,28 +300,27 @@ async function api(path, opts = {}) {
 }
 
 function showKeys(k) {
-  $("#keyState").textContent = k.api_key ? `(tersimpan: ${k.api_key})` : "(belum diisi)";
+  $("#keyState").textContent = k.api_key ? `saved (${k.api_key})` : "not set";
   $("#keyState").className = k.api_key ? "ok" : "bad";
-  $("#twState").textContent = k.twitter_key ? `(tersimpan: ${k.twitter_key})` : "(kosong)";
+  $("#twState").textContent = k.twitter_key ? `saved (${k.twitter_key})` : "not set";
 }
-
-function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
-function fmtSize(n) { return n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB"; }
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const size = n => n > 1e6 ? (n / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1e3)) + " KB";
 
 async function refreshFiles() {
-  const files = await api("/api/files");
-  $("#files").innerHTML = files.length ? files.map(f => `<li>
-      <a href="/api/download/${encodeURIComponent(f.name)}">${esc(f.name)}</a>
-      <span class="muted">${fmtSize(f.size)} · ${new Date(f.mtime * 1000).toLocaleString()}</span>
-      <button data-del="${esc(f.name)}" style="margin-left:auto;font-size:12px;padding:2px 8px">hapus</button></li>`).join("")
-    : `<li class="muted">Belum ada file.</li>`;
+  try {
+    const files = await api("/api/files");
+    $("#files").innerHTML = files.length ? files.map(f => `<li>
+        <a href="/api/download/${encodeURIComponent(f.name)}">${esc(f.name)}</a>
+        <span class="muted">${size(f.size)}, ${new Date(f.mtime * 1000).toLocaleString()}</span>
+        <button data-del="${esc(f.name)}">Delete</button></li>`).join("")
+      : `<li class="muted">No files yet.</li>`;
+  } catch (e) {}
 }
 
-function setRunning(on) {
-  $("#runBtn").disabled = on; $("#stopBtn").disabled = !on;
-}
+function setRunning(on) { $("#runBtn").disabled = on; $("#stopBtn").disabled = !on; }
 
-function renderStatus(s) {
+function render(s) {
   const log = $("#log");
   if (s.lines && s.lines.length) {
     const stick = log.scrollTop + log.clientHeight >= log.scrollHeight - 30;
@@ -329,9 +331,10 @@ function renderStatus(s) {
   const p = s.progress;
   if (p) {
     const pct = p.max ? Math.min(100, Math.round(100 * p.value / p.max)) : 0;
-    $("#bar > div").style.width = (s.running ? pct : (p.bar_style === "success" ? 100 : pct)) + "%";
+    $("#bar > div").style.width = (!s.running && p.bar_style === "success" ? 100 : pct) + "%";
     $("#bar").className = "bar " + (s.running ? "" : p.bar_style);
-    $("#progLbl").textContent = `${p.label}${s.elapsed != null ? " · " + s.elapsed + " dtk" : ""}${s.stopping ? " · menghentikan…" : ""}`;
+    const mins = s.elapsed != null ? `${Math.floor(s.elapsed / 60)}m ${s.elapsed % 60}s` : "";
+    $("#progLbl").textContent = [p.label, mins, s.stopping ? "stopping..." : ""].filter(Boolean).join("  |  ");
   }
   if (!s.running) {
     setRunning(false);
@@ -339,15 +342,15 @@ function renderStatus(s) {
     const r = s.result || {};
     let html = "";
     if (r.files && r.files.length) {
-      html += `<p class="ok"><b>✅ Selesai — ${r.rows} baris.</b> Unduh: ` +
-        r.files.map(f => `<a href="/api/download/${encodeURIComponent(f)}">${esc(f)}</a>`).join(" · ") + "</p>";
+      html += `<p class="ok">Done: ${r.rows} rows. Download: ` +
+        r.files.map(f => `<a href="/api/download/${encodeURIComponent(f)}">${esc(f)}</a>`).join(", ") + "</p>";
     } else if (s.error) {
-      html += `<p class="bad"><b>❌ ${esc(s.error)}</b></p>`;
+      html += `<p class="bad">Error: ${esc(s.error)}</p>`;
     }
     if (r.preview && r.preview.length) {
       html += `<div class="tbl"><table><thead><tr>${r.preview_columns.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>` +
-        r.preview.map(row => `<tr>${row.map(v => `<td>${esc(v)}</td>`).join("")}</tr>`).join("") +
-        `</tbody></table></div><p class="muted">Pratinjau 30 baris pertama.</p>`;
+        r.preview.map(row => `<tr>${row.map(v => `<td title="${esc(v)}">${esc(v)}</td>`).join("")}</tr>`).join("") +
+        `</tbody></table></div><p class="muted" style="font-size:12.5px">Preview of the first 30 rows.</p>`;
     }
     $("#resultBox").innerHTML = html;
     refreshFiles();
@@ -355,19 +358,21 @@ function renderStatus(s) {
 }
 
 async function poll() {
-  try { renderStatus(await api(`/api/status?since=${cursor}`)); }
-  catch (e) { $("#progLbl").textContent = "⚠️ server tidak merespons: " + e.message; }
+  try { render(await api(`/api/status?since=${cursor}`)); failures = 0; }
+  catch (e) {
+    // The server may be busy for a moment (e.g. loading AI models); keep trying quietly.
+    if (++failures >= 5) $("#progLbl").textContent = "Waiting for the server... (is the server window still open?)";
+  }
 }
-function startPolling() { if (!polling) polling = setInterval(poll, 1000); poll(); }
+function startPolling() { if (!polling) polling = setInterval(poll, 1500); poll(); }
 
 async function init() {
   CFG = await api("/api/config");
   $("#mode").innerHTML = CFG.modes.map(m => `<option>${esc(m)}</option>`).join("");
-  $("#cols").innerHTML = CFG.columns.map(c => `<label class="c"><input type="checkbox" value="${c}" checked> ${c}</label>`).join("");
-  $("#preset").innerHTML = `<option>(custom)</option>` + Object.keys(PRESETS).map(p => `<option>${p}</option>`).join("");
   const SC = scenarios();
   $("#scenario").innerHTML = Object.keys(SC).map(s => `<option>${esc(s)}</option>`).join("");
-  $("#outDir").textContent = "Folder: " + CFG.output_dir;
+  $("#outDir").textContent = "Output folder: " + CFG.output_dir;
+  $("#aiState").textContent = CFG.ai_available ? "" : "AI packages not installed — run install-ai once, otherwise the lexicon is used.";
   showKeys(CFG);
   load(CFG.defaults);
 
@@ -377,13 +382,8 @@ async function init() {
     setVal(field("mode"), c.mode); setVal(field("limit"), c.limit); setVal(field("budget"), c.budget);
     setVal(field("comments"), c.comments);
     if (c.rng) applyRange(c.rng); else setVal(field("time_filter"), false);
-    $("#scenarioInfo").textContent = "✔ Skenario diterapkan — tinggal isi kotak pencarian lalu tekan Scrape.";
+    $("#scenarioInfo").textContent = "Scenario applied — settings below were filled automatically; just fill the Search box and press Scrape. Everything can still be changed manually.";
     save();
-  };
-  $("#preset").onchange = e => {
-    const want = PRESETS[e.target.value];
-    if (e.target.value === "(custom)") return save();
-    $$("#cols input").forEach(i => i.checked = !want || want.includes(i.value)); save();
   };
   $$("[data-range]").forEach(b => b.onclick = () => applyRange(Number(b.dataset.range)));
   document.addEventListener("change", save);
@@ -392,48 +392,44 @@ async function init() {
   $("#saveKeys").onclick = async () => {
     try {
       showKeys(await api("/api/settings", { method: "POST", body: JSON.stringify({ api_key: $("#apiKey").value, twitter_key: $("#twKey").value }) }));
-      $("#apiKey").value = ""; $("#twKey").value = ""; $("#creditOut").textContent = "✔ tersimpan";
-    } catch (e) { $("#creditOut").textContent = "❌ " + e.message; }
+      $("#apiKey").value = ""; $("#twKey").value = ""; $("#creditOut").textContent = "Saved.";
+    } catch (e) { $("#creditOut").textContent = "Error: " + e.message; }
   };
   $("#checkCredits").onclick = async () => {
-    $("#creditOut").textContent = "…";
+    $("#creditOut").textContent = "Checking...";
     const b = await api("/api/credits").catch(e => ({ error: e.message }));
     const n = ["creditCount", "credits", "credit_balance", "balance"].map(k => b[k]).find(v => typeof v === "number");
-    $("#creditOut").textContent = n != null ? `Saldo: ${n.toLocaleString()} kredit` : JSON.stringify(b);
+    $("#creditOut").textContent = n != null ? `Credit balance: ${n.toLocaleString()}` : (b.error || JSON.stringify(b));
   };
   $("#importFile").onchange = async e => {
     for (const f of e.target.files) {
       const fd = new FormData(); fd.append("file", f);
       try {
         const r = await fetch("/api/upload", { method: "POST", body: fd }).then(r => r.json());
-        if (!r.path) throw new Error(r.detail || "gagal");
+        if (!r.path) throw new Error(r.detail || "upload failed");
         const ta = $("#import_text"); ta.value = (ta.value.trim() ? ta.value.trim() + "\n" : "") + r.path;
-        $("#uploadOut").textContent = "✔ " + f.name; save();
-      } catch (err) { $("#uploadOut").textContent = "❌ " + err.message; }
+        $("#uploadOut").textContent = "Added " + f.name; save();
+      } catch (err) { $("#uploadOut").textContent = "Error: " + err.message; }
     }
     e.target.value = "";
   };
   $("#runBtn").onclick = async () => {
     save();
     $("#log").textContent = ""; $("#resultBox").innerHTML = ""; cursor = 0;
-    try {
-      await api("/api/run", { method: "POST", body: JSON.stringify(collect()) });
-      setRunning(true); startPolling();
-    } catch (e) { $("#log").textContent = "❌ " + e.message; }
+    try { await api("/api/run", { method: "POST", body: JSON.stringify(collect()) }); setRunning(true); startPolling(); }
+    catch (e) { $("#log").textContent = "Error: " + e.message; }
   };
-  $("#stopBtn").onclick = () => api("/api/stop", { method: "POST" });
-  $("#refreshFiles").onclick = refreshFiles;
+  $("#stopBtn").onclick = () => api("/api/stop", { method: "POST" }).catch(() => {});
   $("#files").onclick = async e => {
     const n = e.target.dataset.del;
-    if (n && confirm(`Hapus ${n}?`)) { await api(`/api/files/${encodeURIComponent(n)}`, { method: "DELETE" }); refreshFiles(); }
+    if (n && confirm(`Delete ${n}?`)) { await api(`/api/files/${encodeURIComponent(n)}`, { method: "DELETE" }); refreshFiles(); }
   };
 
   refreshFiles();
-  // Jika halaman di-refresh saat job berjalan, lanjutkan memantau
-  const s = await api("/api/status?since=0");
+  const s = await api("/api/status?since=0");   // resume watching a scrape that is still running
   if (s.running) { $("#log").textContent = ""; setRunning(true); startPolling(); }
 }
-init().catch(e => { $("#log").textContent = "❌ Gagal memuat konfigurasi: " + e.message; });
+init().catch(e => { $("#log").textContent = "Could not reach the server: " + e.message; });
 </script>
 </body>
 </html>

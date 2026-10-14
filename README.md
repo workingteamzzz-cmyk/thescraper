@@ -1,63 +1,44 @@
-# Social Scraper — versi lokal (tanpa Google Colab)
+# Social Scraper (local version)
 
-Port dari notebook `Social_Scraper_ADVANCED_v58_EN.ipynb` menjadi **aplikasi web lokal**:
-backend Python (FastAPI) + UI di browser. Semua fitur notebook tetap ada — mode keyword /
-BY LINK / BY PROFILE / MIXED, filter waktu WIB, strict keyword, filter bahasa, negative keyword,
-komentar, enrichment profil, retweet, impor data, sentimen & emosi (AI / leksikon), dan output
-Excel layout Sample_Crawling (+ sheet Rekap & Codebook).
+Aplikasi web lokal hasil port dari notebook `Social_Scraper_ADVANCED_v58_EN.ipynb`.
+Berjalan di laptop sendiri (tanpa Google Colab), tampilan English, alur Step 1–6 sama seperti form notebook.
 
-Bedanya dengan Colab:
-- **Tidak ada timeout / disconnect** — jalan di laptop sendiri selama jendela server terbuka.
-- Hasil tersimpan di folder `outputs/` (pengganti Google Drive), termasuk autosave `checkpoint_partial.csv`.
-- Form **diingat otomatis** di browser — tidak perlu isi ulang setiap kali.
-- Tombol **■ Stop** menghentikan request berikutnya; data yang sudah terkumpul tetap disimpan ke Excel.
-- Refresh halaman saat scraping berjalan aman — progress & log tetap terpantau.
+## Instalasi (sekali saja)
 
-## Cara pakai
-
-1. Install **Python 3.10+** (Windows: https://www.python.org/downloads/ — centang *Add Python to PATH*).
-2. Download / clone folder ini.
+1. Install **Python 3.10+** — Windows: https://www.python.org/downloads/ (centang **Add Python to PATH**).
+2. Download ZIP repo ini lalu ekstrak.
 3. Jalankan:
-   - **Windows**: klik dua kali `start-windows.bat`
-   - **Mac / Linux**: `./start-mac-linux.sh`
+   - **Windows:** klik dua kali `start-windows.bat`
+   - **Mac / Linux:** `./start-mac-linux.sh`
+4. Browser terbuka otomatis di http://localhost:8765. Jendela hitam (server) harus tetap terbuka selama dipakai.
+5. Step 1 → isi API key → **Save keys**. Key disimpan di file `.env` di laptop (tidak ikut ke GitHub).
 
-   Pertama kali akan memasang dependensi (±1–2 menit). Browser terbuka otomatis di
-   http://localhost:8765
-4. Isi API key di bagian **🔐 API key** → **Simpan** (tersimpan ke file `.env`, cukup sekali).
-5. Pilih skenario / isi form → **Scrape**. File Excel bisa diunduh dari halaman, atau ambil di folder `outputs/`.
+### Mode analisis AI (opsional, paling akurat)
 
-Cara manual (tanpa script start):
+Jalankan sekali `install-ai-windows.bat` (atau `./install-ai-mac-linux.sh`), lalu restart aplikasi.
+Model (±2 GB) diunduh otomatis saat pertama dipakai. Tanpa ini, analisis memakai **Lexicon** (instan).
 
-```bash
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt      # Windows: .venv\Scripts\pip ...
-.venv/bin/python run.py
-```
+## Anti-timeout
 
-### Mode analisis "AI model" (opsional)
+- Scraping berjalan di server lokal, bukan di tab browser: tab boleh ditutup/di-refresh, proses tetap jalan.
+- Koneksi putus / server penyedia error sementara (502/503/504, timeout) otomatis dicoba ulang hingga 3x.
+- Laptop dicegah masuk *sleep* selama scraping berjalan (Windows & Mac).
+- Autosave `outputs/checkpoint_partial.csv` tiap ±50 baris; tombol **Stop** tetap menyimpan data yang sudah terkumpul.
 
-Mode AI butuh `transformers` + `torch` (unduhan model pertama ±2 GB). Pasang sekali:
+## Output
 
-```bash
-.venv/bin/pip install -r requirements-ai.txt
-```
-
-Tanpa itu, pilih **Leksikon** (instan). Jika mode AI dipilih tapi paket belum ada, aplikasi
-mencoba memasangnya otomatis seperti di Colab; bila gagal, otomatis jatuh ke leksikon.
-Di laptop tanpa GPU, mode AI untuk ratusan baris bisa makan beberapa menit.
+Excel/CSV di folder `outputs/` (bisa juga diunduh dari halaman). Semua kolom selalu ada:
+No, Sentiment, Username, User ID, Follower, Text, Date, Time, Likes, Reply, Shares, Url, Emotion, User Image,
+Platform, Sub Type, Views Count, Gender, Age Category, Content Location, Religion, Ethnic, Phsychography,
+Parent ID, ID, User ID Parent, Query — ditambah sheet **Summary** dan **Codebook**.
+Kolom Gender s/d Phsychography sengaja kosong untuk coding manual.
 
 ## Struktur
 
 | File | Isi |
 | --- | --- |
-| `backend/core.py` | Logika scraping/parsing/filter/sentimen/Excel dari notebook (hampir apa adanya) |
-| `backend/runner.py` | Alur `on_click()` notebook: menerima nilai form dari UI, bukan ipywidgets |
-| `backend/app.py` | API lokal: jalankan job di background, log & progress, stop, unduh file, upload impor |
-| `backend/static/index.html` | Antarmuka web |
+| `backend/core.py` | Logika scraping, filter, sentimen/emosi, layout Excel (dari notebook) |
+| `backend/runner.py` | Alur tombol Scrape (`on_click` notebook) |
+| `backend/app.py` | Server lokal: job di background, log/progress, stop, unduh, upload impor |
+| `backend/static/index.html` | Tampilan |
 | `run.py` | Launcher (port 8765, hanya bisa diakses dari laptop ini) |
-
-Pengaturan lewat `.env` (lihat `.env.example`): `SCRAPECREATORS_API_KEY`, `TWITTER_API_KEY`,
-`OUTPUT_DIR` (opsional). Port bisa diganti dengan env `PORT`.
-
-> Catatan: password gate di notebook tidak dipakai lagi karena aplikasi hanya bisa diakses dari
-> laptop sendiri (`127.0.0.1`). API key tidak lagi ditulis di kode — simpan di `.env` (tidak ikut ter-commit).

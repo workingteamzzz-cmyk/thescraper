@@ -1,10 +1,12 @@
-"""Social Scraper — backend lokal (FastAPI).
+"""Social Scraper — local backend (FastAPI).
 
-Menjalankan satu job scraping di thread latar belakang. UI web melakukan polling
-ke /api/status untuk log & progress, jadi tidak ada timeout seperti di Colab.
+Runs one scraping job at a time in a background thread. The web UI polls /api/status
+for log lines and progress, so there is no browser/request timeout as in Colab.
 """
+import importlib.util
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -23,13 +25,15 @@ try:
 except ImportError:
     pass
 
-from . import core, runner  # noqa: E402  (core membaca .env saat di-import)
+from . import core, runner  # noqa: E402  (core reads .env on import)
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 IMPORT_DIR = os.path.join(core.OUTPUT_DIR, "imports")
 
 
-# ---------------- Penampung log: semua print() selama job masuk ke log job ----------------
+# ---------------- Log capture: every print() during a job goes into the job log ----------------
+_PICTO = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u23E9-\u23FA\u2139\uFE0F]+ ?")
+
 class Job:
     def __init__(self, params):
         self.params = params
@@ -44,6 +48,7 @@ class Job:
         self.finished = None
 
     def write(self, s):
+        s = _PICTO.sub("", s)
         with self.lock:
             buf = self._partial + s
             parts = buf.split("\n")
@@ -61,7 +66,7 @@ JOB = {"current": None}
 
 
 class _Tee:
-    """Ganti sys.stdout: tetap tampil di terminal + tersalin ke log job yang aktif."""
+    """Replaces sys.stdout: still prints to the terminal and copies into the active job log."""
     def __init__(self, orig):
         self.orig = orig
 
@@ -88,11 +93,42 @@ class _Tee:
 sys.stdout = _Tee(sys.stdout)
 
 
+class _KeepAwake:
+    """Stop the laptop from sleeping while a job runs (sleep would drop the connections)."""
+    def __enter__(self):
+        self.proc = None
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                # ES_CONTINUOUS | ES_SYSTEM_REQUIRED
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000 | 0x00000001)
+            elif sys.platform == "darwin":
+                self.proc = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+        except Exception:
+            pass
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+            elif self.proc:
+                self.proc.terminate()
+        except Exception:
+            pass
+
+
 def _worker(job):
+    with _KeepAwake():
+        _run(job)
+
+
+def _run(job):
     try:
         runner.run_job(job.params, job.progress, job.result)
     except core.StopRequested:
-        print("\n⏹ Dihentikan oleh user.")
+        print("\nStopped by user.")
     except Exception as e:
         job.error = f"{type(e).__name__}: {e}"
         print("\n❌ Error: " + job.error)
@@ -127,6 +163,7 @@ def get_config():
         "api_key": _mask(core.API_KEY),
         "twitter_key": _mask(core.TWITTER_API_KEY),
         "output_dir": core.OUTPUT_DIR,
+        "ai_available": all(importlib.util.find_spec(m) for m in ("transformers", "torch")),
     }
 
 
@@ -166,7 +203,7 @@ def save_settings(body: dict):
 @app.get("/api/credits")
 def credits():
     if not core.API_KEY:
-        return {"error": "API key belum diisi"}
+        return {"error": "API key not set"}
     return core.check_credits()
 
 
@@ -174,7 +211,7 @@ def credits():
 def run(body: dict):
     cur = JOB["current"]
     if cur is not None and cur.running:
-        raise HTTPException(409, "Masih ada scraping yang berjalan. Tunggu selesai atau tekan Stop.")
+        raise HTTPException(409, "A scrape is already running. Wait for it to finish or press Stop.")
     core.STOP["flag"] = False
     job = Job(body or {})
     JOB["current"] = job
@@ -188,7 +225,7 @@ def stop():
     if job is None or not job.running:
         return {"ok": False}
     core.STOP["flag"] = True
-    print("\n⏹ Stop diminta — menyelesaikan & menyimpan data yang sudah terkumpul...")
+    print("\nStop requested \u2014 finishing up and saving the data collected so far...")
     return {"ok": True}
 
 
@@ -217,7 +254,7 @@ def status(since: int = 0):
 def _safe_name(name):
     name = os.path.basename(name)
     if not name or name.startswith("."):
-        raise HTTPException(400, "nama file tidak valid")
+        raise HTTPException(400, "invalid file name")
     return name
 
 
@@ -238,7 +275,7 @@ def list_files():
 def download(name: str):
     p = os.path.join(core.OUTPUT_DIR, _safe_name(name))
     if not os.path.isfile(p):
-        raise HTTPException(404, "file tidak ditemukan")
+        raise HTTPException(404, "file not found")
     return FileResponse(p, filename=os.path.basename(p))
 
 
@@ -252,10 +289,10 @@ def delete_file(name: str):
 
 @app.post("/api/upload")
 async def upload(file: UploadFile = File(...)):
-    """Upload .xlsx/.csv untuk kotak 'Import file(s)'; mengembalikan path lokalnya."""
+    """Upload an .xlsx/.csv for the 'Import file(s)' box; returns its local path."""
     name = _safe_name(file.filename or "")
     if not name.lower().endswith((".xlsx", ".xls", ".csv")):
-        raise HTTPException(400, "hanya .xlsx / .xls / .csv")
+        raise HTTPException(400, "only .xlsx / .xls / .csv files")
     os.makedirs(IMPORT_DIR, exist_ok=True)
     p = os.path.join(IMPORT_DIR, name)
     with open(p, "wb") as f:
