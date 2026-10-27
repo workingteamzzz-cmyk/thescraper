@@ -53,3 +53,14 @@ Kolom Gender s/d Phsychography sengaja kosong untuk coding manual.
 | `backend/app.py` | Server lokal: job di background, log/progress, stop, unduh, upload impor |
 | `backend/static/index.html` | Tampilan |
 | `run.py` | Launcher (port 8765, hanya bisa diakses dari laptop ini) |
+
+## HypeStat scraper (traffic data)
+
+Mengambil statistik traffic dari `https://hypestat.com/info/<domain>` (Daily Unique Visitors, Monthly Visits,
+Pages per Visit, Bounce Rate, SEMrush/SimilarWeb visits & rank, HypeRank, dll.).
+
+```
+python hypestat_scraper.py kompas.com detik.com              # -> hypestat.csv
+python hypestat_scraper.py -f domains.txt -o hasil.xlsx       # satu domain per baris
+python hypestat_scraper.py kompas.com --browser               # pakai Playwright kalau diblokir Cloudflare
+```
